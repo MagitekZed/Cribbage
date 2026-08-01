@@ -1,0 +1,115 @@
+<meta charset="utf-8">
+<title>Cribbage engine tests</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    margin: 0; padding: 2rem; max-width: 60rem;
+    background: #14161a; color: #d7dbe0;
+  }
+  h1 { font-size: 1.15rem; letter-spacing: .02em; margin: 0 0 .25rem; }
+  p.sub { margin: 0 0 1.5rem; color: #8b939e; }
+  button {
+    font: inherit; padding: .5rem 1rem; margin-right: .5rem; cursor: pointer;
+    background: #22262d; color: #d7dbe0; border: 1px solid #3a4049; border-radius: 6px;
+  }
+  button:hover:not(:disabled) { background: #2c313a; }
+  button:disabled { opacity: .5; cursor: default; }
+  #summary { margin: 1.5rem 0 .5rem; font-size: 1.05rem; font-weight: 600; }
+  .pass { color: #6cc46c; }
+  .fail { color: #e06c6c; }
+  pre {
+    white-space: pre-wrap; background: #1a1d23; border: 1px solid #2a2f37;
+    border-radius: 6px; padding: 1rem; margin: 0; overflow-x: auto;
+  }
+  .note { color: #8b939e; margin-top: 1.5rem; font-size: .9rem; }
+</style>
+
+<h1>Cribbage engine test suite</h1>
+<p class="sub">
+  The same suite <code>tools/run-tests.js</code> runs from the command line.
+  <span id="counts"></span>
+</p>
+
+<button id="fast">Run suite</button>
+<button id="full">Run suite + exhaustive verification</button>
+
+<div id="summary"></div>
+<pre id="out">Ready.</pre>
+
+<p class="note">
+  The exhaustive pass scores all 2,598,960 five-card combinations against every choice of
+  starter &mdash; 12,994,800 (hand, starter) pairs &mdash; as both a hand and a crib, using two
+  independently written implementations, then enumerates every deck-legal play situation.
+  It takes about half a minute and will freeze this tab while it runs.
+</p>
+
+<script src="js/cards.js"></script>
+<script src="js/scoring.js"></script>
+<script src="js/scoring-naive.js"></script>
+<script src="js/tests.js"></script>
+<script>
+  (function () {
+    'use strict';
+    var out = document.getElementById('out');
+    var summary = document.getElementById('summary');
+    var buttons = [document.getElementById('fast'), document.getElementById('full')];
+
+    document.getElementById('counts').textContent =
+      Cribbage.Tests.showCaseCount + ' show cases, ' +
+      Cribbage.Tests.playCaseCount + ' play sequences.';
+
+    function go(exhaustive) {
+      buttons.forEach(function (b) { b.disabled = true; });
+      summary.textContent = '';
+      out.textContent = 'Running' + (exhaustive ? ' (this will take a while)' : '') + '…';
+
+      // Yield so the browser paints the "running" state before we block the main thread.
+      // setTimeout rather than requestAnimationFrame: rAF does not fire in a backgrounded
+      // tab, which would leave the page stuck on "Running…" if you click and switch away.
+      setTimeout(function () {
+        var lines = [];
+        var started = Date.now();
+        var res;
+        try {
+          res = Cribbage.Tests.run({
+            exhaustive: exhaustive,
+            log: function (s) { lines.push(s); }
+          });
+        } catch (err) {
+          summary.innerHTML = '<span class="fail">The suite threw before finishing.</span>';
+          out.textContent = (err && err.stack) || String(err);
+          buttons.forEach(function (b) { b.disabled = false; });
+          return;
+        }
+        var secs = ((Date.now() - started) / 1000).toFixed(2);
+
+        var failures = res.results.filter(function (r) { return !r.ok; });
+        summary.innerHTML = failures.length
+          ? '<span class="fail">' + res.failed + ' failed</span>, ' + res.passed +
+            ' passed &nbsp;(' + secs + 's)'
+          : '<span class="pass">All ' + res.passed + ' assertions passed</span>' +
+            ' &nbsp;(' + secs + 's)';
+
+        if (failures.length) {
+          lines.push('');
+          lines.push('FAILURES (' + failures.length + '):');
+          failures.forEach(function (f, i) {
+            lines.push('');
+            lines.push('  ' + (i + 1) + ') ' + f.name);
+            lines.push('     expected: ' + JSON.stringify(f.expected));
+            lines.push('     actual:   ' + JSON.stringify(f.actual));
+            if (f.detail) lines.push('     ' + f.detail);
+          });
+        }
+        out.textContent = lines.join('\n') ||
+          ('Every assertion passed. Run the exhaustive verification for the full ' +
+           'enumeration and the score histogram.');
+        buttons.forEach(function (b) { b.disabled = false; });
+      }, 50);
+    }
+
+    buttons[0].addEventListener('click', function () { go(false); });
+    buttons[1].addEventListener('click', function () { go(true); });
+  })();
+</script>
