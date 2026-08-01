@@ -531,11 +531,6 @@ card, the game announces "Go" for you and continues — no dead-end clicking.
 spacebar) fast-forwards the whole count for players who don't need the ceremony. Setting to
 auto-skip permanently.
 
-**Hint system (toggleable, off by default).** During discard, a `?` button shows the expected
-value of each of the fifteen options. During the play, it flags obviously losing plays. It uses
-the exact same evaluator as Hard difficulty, so the hints are genuinely good and it doubles as
-a teaching tool.
-
 **Hand history.** A scrollable log of every scoring event this game: `Hand 4 — You (crib): 12
 — two runs of three, two fifteens, a pair`.
 
@@ -548,7 +543,7 @@ a teaching tool.
 - Contrast targets WCAG AA against the felt and wood backgrounds.
 
 **Settings panel:** difficulty · target score (121/61) · animation speed · four-color deck ·
-sound · hints · auto-skip counting · reset statistics.
+sound · auto-skip counting · reset statistics.
 
 ---
 
@@ -661,15 +656,21 @@ iterate on visually.
 
 ---
 
-## 2.13 Open questions for you
+## 2.13 Resolved decisions
 
-1. **Cut for deal** — include the opening cut-for-deal ceremony, or just alternate starting
-   dealer between games? (Included above; it's ~20 lines and a nice beat, but it's a click.)
-2. **Skunk stakes** — display only, or track "games won" with skunks counting double and
-   double-skunks quadruple in the lifetime record?
-3. **Default difficulty** — Normal on first launch, or ask on the first run?
-4. **Board orientation** — vertical right rail (as specced) or horizontal across the bottom?
-   Vertical fits a 121-hole serpentine more naturally on a laptop; horizontal is more like
-   looking down at a table.
-5. **Hint system** — build it in phase 6 as specced, or cut it entirely?
-6. **Sound** — build it (Web Audio, no files, off by default) or skip?
+| Question | Decision |
+|---|---|
+| Board orientation | **Vertical right rail.** Opponent on top, player on the bottom, play area between them on the left. |
+| Hint system | **Cut.** Not built. |
+| Muggins | **Cut.** Scoring is automatic and awarded to the player on their own actions. |
+| Sound | **Conditional.** Prototype in phase 6 with Web Audio; ship only if it sounds genuinely good. Cut if it lands as beeps and boops. |
+| Repo | Public, `MagitekZed/Cribbage`, GitHub Pages served from `main`. |
+| File layout | Multi-file as specced — no single-file bundle. |
+
+Still open, low stakes, defaulting as noted unless you say otherwise:
+
+1. **Cut for deal** — currently included as an opening ceremony. Alternative: just alternate the
+   starting dealer between games.
+2. **Skunk stakes** — currently display-plus-stats only. Alternative: count skunks as double
+   games and double-skunks as quadruple in the lifetime record.
+3. **Default difficulty** — currently Normal on first launch, no first-run prompt.
