@@ -55,7 +55,11 @@ var files = [
   'js/scoring-naive.js',
   'js/engine.js',
   'js/tests.js',
-  'js/engine-tests.js'
+  'js/engine-tests.js',
+  // animate.js is a browser script but touches no DOM until create() is called,
+  // and its suite injects its own document, so both load cleanly under Node.
+  'js/animate.js',
+  'js/animate-tests.js'
 ];
 
 files.forEach(function (relative) {
@@ -81,6 +85,10 @@ if (!globalThis.Cribbage || !globalThis.Cribbage.Tests) {
 }
 if (!globalThis.Cribbage.EngineTests) {
   console.error('js/engine-tests.js did not register Cribbage.EngineTests');
+  process.exit(1);
+}
+if (!globalThis.Cribbage.AnimateTests) {
+  console.error('js/animate-tests.js did not register Cribbage.AnimateTests');
   process.exit(1);
 }
 
@@ -126,39 +134,61 @@ suites.push({
   elapsed: (Date.now() - engineStarted) / 1000
 });
 
-var elapsed = ((Date.now() - started) / 1000).toFixed(2);
-
-var passed = 0;
-var failed = 0;
-suites.forEach(function (s) {
-  passed += s.result.passed;
-  failed += s.result.failed;
-});
-
+// The animation queue is asynchronous, so unlike the other two this suite hands
+// back a promise. Everything downstream of it therefore has to wait.
 console.log('');
-suites.forEach(function (s) {
-  var failures = s.result.results.filter(function (r) { return !r.ok; });
-  if (!failures.length) return;
-  console.log('FAILURES in the ' + s.name + ' suite (' + failures.length + '):');
-  failures.forEach(function (f, i) {
-    console.log('');
-    console.log('  ' + (i + 1) + ') ' + f.name);
-    console.log('     expected: ' + JSON.stringify(f.expected));
-    console.log('     actual:   ' + JSON.stringify(f.actual));
-    if (f.detail) console.log('     ' + f.detail);
+console.log('  [animate]');
+var animateStarted = Date.now();
+globalThis.Cribbage.AnimateTests.run({
+  verbose: options.verbose,
+  log: log
+}).then(function (animate) {
+  suites.push({
+    name: 'animate',
+    result: animate,
+    elapsed: (Date.now() - animateStarted) / 1000
   });
+  report();
+}, function (err) {
+  console.error('The animate suite rejected:\n' + ((err && err.stack) || err));
+  process.exit(1);
+});
+
+function report() {
+  var elapsed = ((Date.now() - started) / 1000).toFixed(2);
+
+  var passed = 0;
+  var failed = 0;
+  suites.forEach(function (s) {
+    passed += s.result.passed;
+    failed += s.result.failed;
+  });
+
   console.log('');
-});
+  suites.forEach(function (s) {
+    var failures = s.result.results.filter(function (r) { return !r.ok; });
+    if (!failures.length) return;
+    console.log('FAILURES in the ' + s.name + ' suite (' + failures.length + '):');
+    failures.forEach(function (f, i) {
+      console.log('');
+      console.log('  ' + (i + 1) + ') ' + f.name);
+      console.log('     expected: ' + JSON.stringify(f.expected));
+      console.log('     actual:   ' + JSON.stringify(f.actual));
+      if (f.detail) console.log('     ' + f.detail);
+    });
+    console.log('');
+  });
 
-console.log('----------------------------------------------------------');
-suites.forEach(function (s) {
-  console.log('  ' + (s.name + '          ').slice(0, 9) + ' ' +
-    String(s.result.passed).padStart(6, ' ') + ' passed, ' + s.result.failed +
-    ' failed   (' + s.elapsed.toFixed(2) + 's)');
-});
-console.log('  ' + 'total    ' + String(passed).padStart(6, ' ') + ' passed, ' + failed +
-  ' failed   (' + elapsed + 's)');
-console.log('----------------------------------------------------------');
-console.log('');
+  console.log('----------------------------------------------------------');
+  suites.forEach(function (s) {
+    console.log('  ' + (s.name + '          ').slice(0, 9) + ' ' +
+      String(s.result.passed).padStart(6, ' ') + ' passed, ' + s.result.failed +
+      ' failed   (' + s.elapsed.toFixed(2) + 's)');
+  });
+  console.log('  ' + 'total    ' + String(passed).padStart(6, ' ') + ' passed, ' + failed +
+    ' failed   (' + elapsed + 's)');
+  console.log('----------------------------------------------------------');
+  console.log('');
 
-process.exit(failed === 0 ? 0 : 1);
+  process.exit(failed === 0 ? 0 : 1);
+}
