@@ -55,6 +55,137 @@
     return Promise.resolve();
   }
 
+  // Only one summary element exists per session, but its heading needs an id for
+  // aria-labelledby and two sessions can briefly overlap during a newGame().
+  var summarySeq = 0;
+
+  // =========================================================================
+  // The count summary — the receipts for one count
+  //
+  // The engine counts a hand one combination per advance(), so a count arrives
+  // as a showStart event followed by a score event per combination. This folds
+  // that stream back into the thing the player is actually shown.
+  // =========================================================================
+
+  // The three phases in which the engine is counting. A count OPENS on the
+  // showStart event and CLOSES when the engine leaves the phase it opened in —
+  // either for the next count, or straight to GAME_OVER if the count won.
+  var SHOW_PHASES = { SHOW_PONE: true, SHOW_DEALER: true, SHOW_CRIB: true };
+
+  /**
+   * readCounts(open, events) -> { open, closed }
+   *
+   * THE WHOLE CORRECTNESS ARGUMENT for the summary lives in this function, so
+   * it is worth being blunt: the summary is assembled from the score events the
+   * engine ACTUALLY EMITTED, and never by scoring the hand a second time.
+   *
+   * The engine's award() gate stops the instant a player reaches the target,
+   * including partway through a count. A hand that crosses 121 on its third
+   * combination emits three score events, pegs three combinations, and never
+   * awards the fourth. Calling Scoring.scoreHand() again to build the summary
+   * would print a fourth line and a total that disagrees with the pegs the
+   * player is looking at — which is the one thing a receipt may not do.
+   *
+   * `open` is the count in progress or null; `closed` is the counts that
+   * finished in this batch. Pure, and exported at the bottom of the file so the
+   * suite can drive it with real engine output.
+   */
+  function readCounts(open, events) {
+    var closed = [];
+    var n = events ? events.length : 0;
+    for (var i = 0; i < n; i++) {
+      var ev = events[i];
+      if (!ev || !ev.type) continue;
+      if (ev.type === 'showStart') {
+        open = {
+          player: ev.player,
+          source: ev.source === 'crib' ? 'crib' : 'hand',
+          cards: (ev.cards || []).slice(),
+          starter: ev.starter || null,
+          items: [],
+          total: 0
+        };
+      } else if (ev.type === 'score' && open &&
+        (ev.source === 'hand' || ev.source === 'crib')) {
+        // 'play' and 'heels' are scored elsewhere in the hand and are not part
+        // of anybody's count, so they are not receipts for one.
+        open.items.push({ reason: ev.reason, points: ev.points });
+        open.total += ev.points;
+      } else if (ev.type === 'phase' && open && SHOW_PHASES[ev.from]) {
+        closed.push(open);
+        open = null;
+      }
+    }
+    return { open: open, closed: closed };
+  }
+
+  // =========================================================================
+  // Which keys the summary answers to
+  //
+  // SPACE IS TWO KEYS WEARING ONE HAT. During a count it is fast-forward — the
+  // Skip button says so on its face — and the moment the summary is up it is
+  // Continue. So the player is invited to tap Space to hurry the animation, and
+  // the whole purpose of that animation is to END at the summary: at the instant
+  // the panel appears there is very often another tap already on its way. A tap
+  // is not auto-repeat, so `event.repeat` never sees it, and the press that
+  // asked for the summary is the press that throws it away.
+  //
+  // The summary therefore ignores Space until the tapping has actually stopped.
+  // Every Space that lands inside the window pushes the window out; only quiet
+  // ends it. Enter, Escape and the button itself are unambiguous — nothing
+  // during a count binds them — and are never held back, so there is always a
+  // key that continues on the first press.
+  // =========================================================================
+
+  // How long "quiet" is. Deliberately NOT multiplied by --anim-scale: a hand
+  // coming off a key does not speed up when the animations do, and at scale 0
+  // the counts are instant, which is exactly when a burst of taps arrives
+  // fastest. 400ms is --t-slow at scale 1, borrowed as a length of time rather
+  // than as motion. Much below 300 and a hurried tap gets through; much above a
+  // second and a deliberate second press starts to feel dead.
+  var SUMMARY_SETTLE_MS = 400;
+
+  /**
+   * summaryKey(key, at) -> { action, settled }
+   *
+   *   key         the KeyboardEvent's `key`
+   *   at.repeat   its auto-repeat flag
+   *   at.now      a timestamp in ms
+   *   at.settled  when Space stops being fast-forward and becomes Continue
+   *
+   * action is one of:
+   *   'close'  activate Continue
+   *   'hold'   swallow it — it belongs to the fast-forward, not to the summary
+   *   'pass'   not the summary's key; leave the event alone
+   *
+   * `settled` comes back pushed forward by any press that is part of a
+   * fast-forward burst. Pure, and exported at the bottom of the file: "skip must
+   * land ON the summary, never past it" is the point of the whole feature, and
+   * it deserves a test that does not need a browser to run.
+   */
+  function summaryKey(key, at) {
+    var now = (at && at.now) || 0;
+    var settled = (at && at.settled) || 0;
+    var repeat = !!(at && at.repeat);
+    var space = key === ' ' || key === 'Spacebar';
+
+    // S is already inert behind the summary, but it is still the player
+    // hurrying: it keeps the burst alive so that S-then-Space is read as one
+    // gesture rather than as a skip followed by a Continue. Tab, and everything
+    // else, is none of the summary's business.
+    if (!space && key !== 'Enter' && key !== 'Escape') {
+      var skipKey = key === 's' || key === 'S';
+      return { action: 'pass', settled: skipKey ? now + SUMMARY_SETTLE_MS : settled };
+    }
+    if (space && (repeat || now < settled)) {
+      return { action: 'hold', settled: now + SUMMARY_SETTLE_MS };
+    }
+    // A held key activates nothing, whichever key it is: Escape leant on through
+    // the lay-away must not run all three of a hand's summaries out.
+    if (repeat) return { action: 'hold', settled: settled };
+    return { action: 'close', settled: settled };
+  }
+
   // =========================================================================
   // The opponent seam.
   //
@@ -177,6 +308,9 @@
    *   opts.rng          injectable shuffle source, for a reproducible game.
    *   opts.dealer       0 | 1 to skip the cut for deal. Default null: cut.
    *   opts.fourColor    start with the four-colour deck.
+   *   opts.pauseAfterCount  stop on a summary after each count and wait for
+   *                     Continue. Default TRUE. This is the Phase 6 setting;
+   *                     see setPauseAfterCount() at the bottom of the file.
    */
   function create(rootEl, opts) {
     if (!Cards || !Scoring) {
@@ -185,8 +319,12 @@
     var Engine = root.Cribbage && root.Cribbage.Engine;
     var Render = root.Cribbage && root.Cribbage.Render;
     var Animate = root.Cribbage && root.Cribbage.Animate;
-    if (!Engine || !Render || !Animate) {
-      throw new Error('Cribbage.Game: engine.js, render.js and animate.js must load first');
+    // The summary lays five real cards out as its receipts, so this file needs
+    // the card builder as well as the three layers it already drove.
+    var RC = root.Cribbage && root.Cribbage.RenderCards;
+    if (!Engine || !Render || !Animate || !RC) {
+      throw new Error('Cribbage.Game: engine.js, render-cards.js, render.js and ' +
+        'animate.js must load first');
     }
     if (!rootEl) throw new Error('Cribbage.Game.create: no root element');
 
@@ -274,6 +412,21 @@
     var controls = null;       // the controls bar this file owns
     var announcer = null;      // the append-only live region
     var thinking = null;       // the opponent's pause, held so skip can cut it short
+
+    // THE PHASE 6 SETTING, in one variable. `pause after each count`, default
+    // on. Everything else about the summary hangs off it — see
+    // setPauseAfterCount() in the api at the bottom of this file, which is the
+    // only thing a settings checkbox needs to be wired to.
+    var pauseAfterCount = opts.pauseAfterCount !== false;
+
+    var openCount = null;      // the count the engine is partway through
+    var pendingCounts = [];    // counts that have finished and not yet been read
+    var summaryUi = null;      // the summary's elements, built once per session
+    var summary = null;        // { count, resolve, previous } while one is up
+    // When Space stops being fast-forward and becomes Continue. Armed by
+    // openSummary() and pushed forward by every press that is still part of the
+    // burst — see summaryKey() at the top of this file.
+    var summarySettled = 0;
 
     // The opponent's artificial pause. Held rather than fired and forgotten,
     // because a bare setTimeout is the one thing Skip cannot reach: pressing S
@@ -444,6 +597,9 @@
 
       session.view.el.app.setAttribute('data-busy', waiting() ? 'true' : 'false');
       session.view.el.app.setAttribute('data-awaiting', awaiting ? 'true' : 'false');
+      // The summary's own scrim is what stops a pointer reaching the table; this
+      // is for anything that needs to know the game is parked, and for QA.
+      session.view.el.app.setAttribute('data-summary', summary ? 'true' : 'false');
     }
 
     // ------------------------------------------------------------ announcer ---
@@ -468,6 +624,215 @@
       while (announcer.children.length > 40) {
         announcer.removeChild(announcer.firstChild);
       }
+    }
+
+    // ------------------------------------------------------ the count summary ---
+    //
+    // Counting is automatic, so without this the three counts of a hand go past
+    // at the speed of the animation and the player never gets to check the
+    // arithmetic against the cards. After each one the game stops here and waits.
+    //
+    // It is built ONCE per session and refilled, and it is the LAST child of
+    // .game for two reasons. Paint order is the obvious one. The other is that
+    // render.js's findCard() is a table-wide querySelector: a .card element in
+    // here is a card the animator could pick up and fly instead of the one on
+    // the table. Being last means the real card always wins the query, and
+    // closeSummary() empties the row so there is nothing to win against.
+
+    function buildSummary(view) {
+      var uid = 'cs' + (++summarySeq);
+      var box = el(doc, 'div', 'summary');
+      box.hidden = true;
+
+      var panel = el(doc, 'div', 'summary__panel');
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-modal', 'true');
+      panel.setAttribute('aria-labelledby', uid + '-who');
+
+      var who = el(doc, 'h2', 'summary__who', '');
+      who.id = uid + '-who';
+
+      var cards = el(doc, 'ul', 'summary__cards');
+      cards.setAttribute('aria-label', 'The five cards being counted');
+
+      var items = el(doc, 'ul', 'summary__items');
+
+      // The traditional joke, and the right answer to "why is this list empty".
+      var nil = el(doc, 'p', 'summary__nil', 'Nothing. A nineteen hand.');
+      nil.hidden = true;
+
+      var total = el(doc, 'p', 'summary__total');
+      total.appendChild(el(doc, 'span', 'summary__total-label', 'Total'));
+      var totalNum = el(doc, 'span', 'summary__total-num', '0');
+      total.appendChild(totalNum);
+
+      var go = el(doc, 'button', 'btn summary__go');
+      go.type = 'button';
+      go.appendChild(doc.createTextNode('Continue '));
+      go.appendChild(el(doc, 'kbd', 'btn__key', 'Enter'));
+      go.addEventListener('click', function () { closeSummary(); });
+
+      panel.appendChild(el(doc, 'p', 'summary__eyebrow', 'The count'));
+      panel.appendChild(who);
+      panel.appendChild(cards);
+      panel.appendChild(items);
+      panel.appendChild(nil);
+      panel.appendChild(total);
+      panel.appendChild(go);
+      box.appendChild(panel);
+      view.el.game.appendChild(box);
+
+      return {
+        box: box, panel: panel, who: who, cards: cards,
+        items: items, nil: nil, totalNum: totalNum, go: go
+      };
+    }
+
+    // Whose count it is, said so it cannot be misread. Whose CRIB it is decides
+    // a hand, so "Your crib" and "Opponent's crib" must never blur into "Crib".
+    function countTitle(count) {
+      var whose = count.player === me ? 'Your' : labels[count.player] + "'s";
+      return whose + (count.source === 'crib' ? ' crib' : ' hand');
+    }
+
+    function countSentence(count) {
+      var head = countTitle(count);
+      if (!count.items.length) return head + ' scores nothing. A nineteen hand.';
+      var parts = [];
+      for (var i = 0; i < count.items.length; i++) {
+        parts.push(count.items[i].reason.toLowerCase() + ' ' + count.items[i].points);
+      }
+      return head + ' — ' + parts.join(', ') + '. Total ' + count.total + '.';
+    }
+
+    function summaryCard(card, isCut) {
+      var li = el(doc, 'li', 'summary__card');
+      if (isCut) li.setAttribute('data-cut', 'true');
+      var node = RC.createCard(card, {});
+      RC.setFaceDown(node, false);
+      li.appendChild(node);
+      // Every card carries a tag so the five sit on one baseline; only the
+      // starter's says anything.
+      li.appendChild(el(doc, 'span', 'summary__tag', isCut ? 'Cut' : ''));
+      return li;
+    }
+
+    function clear(node) {
+      while (node.firstChild) node.removeChild(node.firstChild);
+    }
+
+    function openSummary(count) {
+      if (!session || !summaryUi) return noSleep();
+      var ui = summaryUi;
+      var i;
+
+      ui.who.textContent = countTitle(count);
+
+      // Rebuilt rather than reconciled. Five cards is nothing to build, and a
+      // pool here would leave a second element for the same card in the tree.
+      clear(ui.cards);
+      for (i = 0; i < count.cards.length; i++) {
+        ui.cards.appendChild(summaryCard(count.cards[i], false));
+      }
+      if (count.starter) ui.cards.appendChild(summaryCard(count.starter, true));
+
+      clear(ui.items);
+      for (i = 0; i < count.items.length; i++) {
+        var row = el(doc, 'li', 'summary__item');
+        row.appendChild(el(doc, 'span', 'summary__name', count.items[i].reason));
+        row.appendChild(el(doc, 'span', 'summary__points', '+' + count.items[i].points));
+        ui.items.appendChild(row);
+      }
+      ui.items.hidden = count.items.length === 0;
+      ui.nil.hidden = count.items.length !== 0;
+      ui.totalNum.textContent = String(count.total);
+
+      var previous = doc.activeElement;
+      ui.box.hidden = false;
+      // The panel is very often reached BY tapping Space, so the next tap of a
+      // burst already on its way must not dismiss it. Armed on every summary,
+      // not only on a skipped one: at --anim-scale 0 a count is instant and a
+      // burst arrives with nothing to fast-forward in between.
+      summarySettled = Date.now() + SUMMARY_SETTLE_MS;
+      // The executor runs synchronously, so `summary` is set before anything
+      // below can read it — updateControls() does, and painted the wrong
+      // attribute when this sat at the end of the function.
+      var waitFor = new Promise(function (resolve) {
+        summary = { count: count, resolve: resolve, previous: previous };
+      });
+      // role="log" rather than the dialog alone: a reader that does not
+      // announce dialogs still gets the whole count in one addition.
+      announce(countSentence(count));
+      updateControls(state());
+      if (isFn(ui.go.focus)) ui.go.focus();
+      // The overlay is absolute over the game column so the board stays in
+      // view, which means it does NOT follow the window when the page scrolls.
+      // Below 1024px the column is routinely taller than the viewport, and
+      // focus() alone does not reliably bring the panel back — measured at
+      // 900x800, Continue sat all but two pixels below the fold with the page
+      // still scrolled to the top.
+      if (isFn(ui.panel.scrollIntoView)) {
+        try {
+          ui.panel.scrollIntoView({ block: 'center', inline: 'nearest' });
+        } catch (err) {
+          ui.panel.scrollIntoView();   // the pre-options signature
+        }
+      }
+      return waitFor;
+    }
+
+    // `silent` is teardown: the promise still has to settle or the pump's
+    // continuation never unwinds, but there is no longer anywhere to put focus.
+    function closeSummary(silent) {
+      var open = summary;
+      summary = null;
+      if (summaryUi) {
+        summaryUi.box.hidden = true;
+        clear(summaryUi.cards);
+      }
+      if (!open) return;
+      if (!silent && session) {
+        restoreFocus(open.previous);
+        updateControls(state());
+      }
+      open.resolve();
+    }
+
+    // Somewhere sensible: whatever held focus before, if it is still on the
+    // table, and otherwise the Skip button — a real, always-enabled control in
+    // the row the player already uses. Anything else drops focus to <body> and
+    // costs a keyboard player their place.
+    function restoreFocus(previous) {
+      var app = session.view.el.app;
+      if (previous && previous !== doc.body && isFn(previous.focus) &&
+        isFn(app.contains) && app.contains(previous)) {
+        previous.focus();
+        return;
+      }
+      if (controls && controls.skip && isFn(controls.skip.focus)) controls.skip.focus();
+    }
+
+    /**
+     * The gate itself. Called at the end of every drain, so a count that has
+     * finished holds the game until the player has read it.
+     *
+     * It deliberately does NOT call anim.resume(). Fast-forward is a mode that
+     * ends when a human decision is pending, and this IS one — but the whole
+     * point of pressing Skip during a count is to reach this screen, and a mode
+     * that ended here would make the player press it again for each of the
+     * three counts in the hand. One press carries them through all three
+     * summaries and hands the table back at the lay-away, which is where
+     * armHuman() ends the mode as it always did.
+     */
+    function drainSummaries(token) {
+      if (!pendingCounts.length) return noSleep();
+      if (!pauseAfterCount || token !== generation || !session) {
+        pendingCounts.length = 0;
+        return noSleep();
+      }
+      return openSummary(pendingCounts.shift()).then(function () {
+        return drainSummaries(token);
+      });
     }
 
     // -------------------------------------------------------- the count panel ---
@@ -634,6 +999,12 @@
     function runEvents(events) {
       var token = generation;
       awaiting = false;
+      // Read off the events BEFORE a single beat plays. The receipts are the
+      // events themselves, so reading them here rather than off the beats keeps
+      // the summary honest even if a beat throws or is fast-forwarded away.
+      var read = readCounts(openCount, events);
+      openCount = read.open;
+      for (var i = 0; i < read.closed.length; i++) pendingCounts.push(read.closed[i]);
       var snapshot = state();
       var hints = hintsFor(snapshot);
       var done = session.anim.play(events, snapshot, hints);
@@ -641,10 +1012,18 @@
       // queued, so asking first paints "idle" for the whole drain and the busy
       // lock and the Skip light never come on.
       updateControls(snapshot);
+      // The gate hangs off the END of the drain rather than off pump(), so
+      // every path that puts events on the screen goes through it. In practice
+      // only the engine-driven branch can produce a count, but a gate with one
+      // door is a gate nobody can walk around later. Note what this means for
+      // the caller: the promise runEvents() returns does not settle until the
+      // player has pressed Continue, which is what keeps `pumping` true and the
+      // whole loop parked behind the summary.
       return done.then(function () {
         if (token !== generation || !session) return;
         session.view.setStatus(null);
         repaint();
+        return drainSummaries(token);
       });
     }
 
@@ -900,6 +1279,14 @@
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       var key = event.key;
 
+      // The summary is a real stop, so every other binding is dead behind it —
+      // including S. A key held down through a fast-forwarded count must not be
+      // able to carry the player past the thing they pressed it to reach.
+      if (summary) {
+        onSummaryKey(event);
+        return;
+      }
+
       if (key === 'ArrowLeft' || key === 'ArrowRight') {
         if (moveCursor(key === 'ArrowRight' ? 1 : -1)) event.preventDefault();
         return;
@@ -943,8 +1330,34 @@
       }
     }
 
+    // Continue is click, Enter or Space, and Escape too: there is nothing else
+    // to do at that moment, and a key that dead-ends is worse than a redundant
+    // one. Tab is left alone so focus can still be moved out of the panel.
+    //
+    // The decision is the pure summaryKey() at the top of this file — including
+    // the part that stops a burst of Space taps aimed at the animation from
+    // carrying the player straight through the thing they were aimed at. All
+    // that is left here is the clock and the DOM.
+    function onSummaryKey(event) {
+      var verdict = summaryKey(event.key, {
+        repeat: !!event.repeat,
+        now: Date.now(),
+        settled: summarySettled
+      });
+      summarySettled = verdict.settled;
+      if (verdict.action === 'pass') return;
+      // Swallowed rather than passed on: Continue is focused, so letting the
+      // default through would activate it a second time on the same keystroke —
+      // and a held or hurried key must not reach it at all.
+      event.preventDefault();
+      if (verdict.action === 'close') closeSummary();
+    }
+
     // Skip means "stop making me wait", and the opponent's pause is a wait like
     // any other — so it is cut short here as well as the animation queue.
+    //
+    // A summary is not a wait — it is the player's turn to read — so a press
+    // made while one is up finds waiting() false and correctly does nothing.
     //
     // waiting() is read BEFORE the pause is cut, because cutting it clears the
     // very flag being tested. The test is what keeps the mode from being armed
@@ -976,6 +1389,10 @@
 
     function teardown() {
       if (thinking) thinking.done();
+      // Before the session goes: the pump is parked on this promise, and a
+      // continuation that never runs is a continuation that never checks its
+      // generation token and lets go of the old session.
+      closeSummary(true);
       if (!session) return;
       for (var i = 0; i < session.unbind.length; i++) session.unbind[i]();
       session.unbind.length = 0;
@@ -984,15 +1401,21 @@
       session = null;
       controls = null;
       announcer = null;
+      summaryUi = null;
+      openCount = null;
+      pendingCounts.length = 0;
     }
 
     function start() {
       awaiting = false;
       selection = [];
       pumping = false;
+      openCount = null;
+      pendingCounts.length = 0;
       session = build();
       controls = buildControls(session.view);
       announcer = buildAnnouncer(session.view);
+      summaryUi = buildSummary(session.view);
       bind();
       repaint();
       pump();
@@ -1038,6 +1461,47 @@
       skip: skipAnimation,
       setSpeed: setSpeed,
       destroy: destroy,
+
+      /**
+       * setPauseAfterCount(on) -> boolean
+       *
+       * THE PHASE 6 SETTING. true (the default) stops on a summary after each
+       * of the three counts in a hand and waits for Continue; false is the old
+       * straight-through behaviour, where the counts still animate but nothing
+       * pauses. A settings checkbox needs to be wired to this and to nothing
+       * else — no other part of the summary is conditional.
+       */
+      setPauseAfterCount: function (on) {
+        pauseAfterCount = on !== false;
+        // Turned off with one already up, the summary in front of the player
+        // still stands: taking it away mid-read would be a worse surprise than
+        // the setting taking effect at the next count.
+        if (!pauseAfterCount) pendingCounts.length = 0;
+        return pauseAfterCount;
+      },
+      pausesAfterCount: function () { return pauseAfterCount; },
+      continueFromSummary: function () {
+        if (!summary) return false;
+        closeSummary();
+        return true;
+      },
+      // The count on screen, or null. Read-only, for the console and the
+      // browser harness — the summary is built from engine events, not from
+      // anything a caller can hand back in.
+      summary: function () {
+        if (!summary) return null;
+        var c = summary.count;
+        return {
+          title: countTitle(c),
+          player: c.player,
+          source: c.source,
+          cards: c.cards.slice(),
+          starter: c.starter,
+          items: c.items.slice(),
+          total: c.total
+        };
+      },
+
       isAwaitingInput: function () { return accepting(); },
       isBusy: busy,
       selection: function () { return selection.slice(); },
@@ -1055,6 +1519,11 @@
   root.Cribbage = root.Cribbage || {};
   root.Cribbage.Game = {
     create: create,
-    createPlaceholderOpponent: createPlaceholderOpponent
+    createPlaceholderOpponent: createPlaceholderOpponent,
+    // Exported for js/animate-tests.js. Both are pure, and between them they are
+    // the whole of the summary's correctness: readCounts is what it says, and
+    // summaryKey is what it takes to dismiss it. Neither needs a DOM.
+    readCounts: readCounts,
+    summaryKey: summaryKey
   };
 })(typeof window !== 'undefined' ? window : globalThis);

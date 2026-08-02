@@ -61,6 +61,9 @@
   //   ?target=61    a short game.
   //   ?dealer=0|1   skip the cut for deal.
   //   ?seed=N       a deterministic shuffle, for reproducing a bug report.
+  //   ?pause=0      do not stop on the count summary. Phase 6 turns this into a
+  //                 real setting; until then it is how a whole game is driven
+  //                 end to end without a click after every count.
 
   function mulberry32(a) {
     return function () {
@@ -82,6 +85,8 @@
 
   var seed = parseInt(params.get('seed'), 10);
   if (isFinite(seed)) opts.rng = mulberry32(seed);
+
+  if (params.get('pause') === '0') opts.pauseAfterCount = false;
 
   // The controller is the whole public surface: newGame, skip, setSpeed,
   // destroy, plus read-only handles for the console.

@@ -1455,6 +1455,448 @@
   }
 
   // =========================================================================
+  //  The count summary (js/game.js)
+  // =========================================================================
+  //
+  // Scoring is automatic, so after each of the three counts in a hand the game
+  // stops on a summary and waits for Continue. What that summary shows has to
+  // be the receipts for what was ACTUALLY SCORED, which is not the same thing
+  // as what the hand is worth: the engine's award gate stops the count dead the
+  // moment somebody reaches the target, so a hand that wins on its third
+  // combination never awards its fourth.
+  //
+  // game.js exports the pure fold that builds the summary out of engine events,
+  // and everything below drives that fold with real games. Scoring.scoreHand()
+  // appears only on the EXPECTED side of an assertion, as the thing the summary
+  // must not be.
+
+  // Plays a whole game the way the controller does — one batch at a time — and
+  // folds every batch through Game.readCounts exactly as runEvents() does.
+  function playForCounts(Game, Engine, seed, options) {
+    var rand = mulberry32(seed);
+    var opts = { rng: rand };
+    for (var k in (options || {})) opts[k] = options[k];
+    var game = Engine.createGame(opts);
+    var target = game.getState().targetScore;
+
+    var open = null;
+    var openBefore = 0;      // the counting player's score when the count opened
+    var counts = [];
+    var handEnds = [];       // index into `counts` at which each hand finished
+    var awarded = [];        // every score event carrying a count's source
+    var starts = 0;          // showStart events, i.e. counts the engine began
+    var guard = 0;
+
+    while (!game.isOver() && guard++ < 40000) {
+      var before = game.getState().scores.slice();
+      var actor = game.pendingActor();
+      var events;
+      if (actor === null) {
+        events = game.advance();
+      } else {
+        var legal = game.legalActions();
+        events = game.apply(legal[Math.floor(rand() * legal.length) % legal.length]);
+      }
+
+      var i;
+      for (i = 0; i < events.length; i++) {
+        var ev = events[i];
+        if (ev.type === 'showStart') {
+          starts++;
+          openBefore = before[ev.player];
+        }
+        if (ev.type === 'score' && (ev.source === 'hand' || ev.source === 'crib')) {
+          awarded.push(ev);
+        }
+        if (ev.type === 'handEnd') handEnds.push(counts.length);
+      }
+
+      var read = Game.readCounts(open, events);
+      open = read.open;
+      for (i = 0; i < read.closed.length; i++) {
+        read.closed[i].scoreBefore = openBefore;
+        read.closed[i].scoreAfter = game.getState().scores[read.closed[i].player];
+        counts.push(read.closed[i]);
+      }
+    }
+
+    return {
+      counts: counts,
+      handEnds: handEnds,
+      awarded: awarded,
+      starts: starts,
+      open: open,
+      target: target,
+      state: game.getState()
+    };
+  }
+
+  function sumPoints(items) {
+    var n = 0;
+    for (var i = 0; i < items.length; i++) n += items[i].points;
+    return n;
+  }
+
+  function testSummaryPerCount(S, Game, Engine) {
+    var run = playForCounts(Game, Engine, 0x5C0DED, { targetScore: 121 });
+
+    S.eq('the game reached game over', run.state.phase, 'GAME_OVER');
+    S.eq('no count is left open at the end', run.open, null);
+    S.ok('a whole game produces counts to summarise', run.counts.length > 20,
+      run.counts.length + ' counts');
+
+    // A count opens on showStart and closes when the engine leaves the show
+    // phase, so "one summary per count, no more and no fewer" is the same
+    // statement as "one closed count per showStart event".
+    S.eq('every count the engine began produced exactly one summary',
+      run.counts.length, run.starts);
+
+    var start = 0;
+    var bad = [];
+    for (var h = 0; h < run.handEnds.length; h++) {
+      var trio = run.counts.slice(start, run.handEnds[h]);
+      start = run.handEnds[h];
+      var name = 'hand ' + (h + 1);
+      if (trio.length !== 3) {
+        bad.push(name + ' summarised ' + trio.length + ' counts');
+        continue;
+      }
+      if (trio[0].source !== 'hand' || trio[1].source !== 'hand' ||
+        trio[2].source !== 'crib') {
+        bad.push(name + ' counted ' + trio.map(function (c) { return c.source; }).join(','));
+      }
+      if (trio[0].player === trio[1].player) {
+        bad.push(name + ' counted the same player twice');
+      }
+      if (trio[1].player !== trio[2].player) {
+        bad.push(name + ' gave the crib to the wrong player');
+      }
+      if (trio[2].cards.length !== 4 || !trio[2].starter) {
+        bad.push(name + ' did not carry five cards for the crib');
+      }
+    }
+    S.ok('a whole game of complete hands', run.handEnds.length > 5,
+      run.handEnds.length + ' hands');
+    S.eq("every completed hand is three counts — pone's hand, dealer's hand, dealer's crib",
+      bad.length, 0, bad.slice(0, 3).join(' | '));
+
+    // The receipts, against what the engine actually awarded. This is the
+    // assertion that a re-scored summary fails.
+    var listed = [];
+    for (var c = 0; c < run.counts.length; c++) {
+      var items = run.counts[c].items;
+      for (var j = 0; j < items.length; j++) {
+        listed.push(items[j].reason + ' +' + items[j].points);
+      }
+    }
+    var emitted = run.awarded.map(function (ev) {
+      return ev.reason + ' +' + ev.points;
+    });
+    S.deepEq('the summaries list exactly the combinations the engine awarded',
+      listed, emitted);
+
+    var totalsAgree = true;
+    for (c = 0; c < run.counts.length; c++) {
+      if (run.counts[c].total !== sumPoints(run.counts[c].items)) totalsAgree = false;
+      // Everything short of the win is unclamped, so the pegs and the total are
+      // the same number; the winning count is checked separately below.
+      if (run.counts[c].scoreAfter < run.target &&
+        run.counts[c].scoreBefore + run.counts[c].total !== run.counts[c].scoreAfter) {
+        totalsAgree = false;
+      }
+    }
+    S.ok('every total is the sum of its own list, and the pegs agree', totalsAgree);
+  }
+
+  // "Nothing. A nineteen hand." is only reachable if a count really can come out
+  // of the engine with no score events at all.
+  function testNineteenHand(S, Game, Engine) {
+    var nil = null;
+    var counted = 0;
+    for (var seed = 1; seed <= 12 && !nil; seed++) {
+      var run = playForCounts(Game, Engine, seed * 0x9E3779B1, { targetScore: 121 });
+      for (var i = 0; i < run.counts.length; i++) {
+        counted++;
+        if (!run.counts[i].items.length) { nil = run.counts[i]; break; }
+      }
+    }
+    S.ok('a count that scores nothing really happens', !!nil,
+      counted + ' counts searched');
+    if (!nil) return;
+    S.eq('and it carries no items at all', nil.items.length, 0);
+    S.eq('with a total of nothing', nil.total, 0);
+    S.eq('the five cards are still there to be shown', nil.cards.length, 4);
+    S.ok('including the cut', !!nil.starter);
+    S.eq('and the player did not move', nil.scoreBefore, nil.scoreAfter);
+  }
+
+  // THE CASE THE WHOLE DESIGN TURNS ON. The game ends the instant a player
+  // reaches the target, including partway through a count: the engine emits
+  // score events up to that point and stops. A summary built by re-scoring the
+  // hand would list a combination the player was never awarded and a total that
+  // disagrees with their pegs.
+  function testSummaryOnAMidCountWin(S, Game, Engine, Scoring) {
+    if (!Scoring) return;
+    var found = null;
+    var searched = 0;
+    var seed;
+    var game;
+    var last;
+    for (seed = 1; seed <= 600 && !found; seed++) {
+      searched++;
+      game = playForCounts(Game, Engine, seed * 0x27D4EB2D, {
+        targetScore: 121,
+        scores: [114, 112]
+      });
+      last = game.counts[game.counts.length - 1];
+      if (!last || game.state.winner !== last.player) continue;
+      if (last.scoreAfter !== game.target || !last.items.length) continue;
+      var full = Scoring.scoreHand(last.cards, last.starter, last.source === 'crib');
+      if (full.breakdown.length > last.items.length) {
+        found = { game: game, count: last, full: full };
+      }
+    }
+
+    S.ok('found a count that won the game partway through', !!found,
+      searched + ' games searched');
+    if (!found) return;
+
+    var c = found.count;
+    var whole = found.full;
+
+    S.ok('the count really was cut short', c.items.length < whole.breakdown.length,
+      c.items.length + ' of ' + whole.breakdown.length + ' combinations awarded');
+    S.deepEq('the summary lists only the combinations that were awarded',
+      c.items.map(function (it) { return it.reason; }),
+      whole.breakdown.slice(0, c.items.length).map(function (b) { return b.label; }));
+    S.eq('the total is the sum of what was actually awarded',
+      c.total, sumPoints(c.items));
+    S.ok('which is less than the hand is worth', c.total < whole.total,
+      c.total + ' shown, ' + whole.total + ' in the hand');
+    // The engine clamps the winning award at the target, so the pegs land on
+    // home rather than past it. That is what "matching the pegs" means here.
+    S.eq('and the pegs agree with the summary',
+      Math.min(c.scoreBefore + c.total, found.game.target), c.scoreAfter);
+    S.eq('the count that won the game is still summarised',
+      found.game.state.phase, 'GAME_OVER');
+    S.eq('and it closed rather than being left open',
+      found.game.open, null);
+  }
+
+  // What does and does not belong to a count, stated directly. Pegging points
+  // and his heels are scored in the same hand and are nobody's count.
+  function testCountFoldIgnoresTheRestOfTheHand(S, Game, Cards) {
+    var c = function (id) { return Cards.cardFromId(id); };
+    var four = [c(0), c(4), c(8), c(12)];
+    var stream = [
+      { type: 'score', player: 0, points: 2, reason: 'His heels', cards: [c(40)],
+        source: 'heels', total: 2 },
+      { type: 'phase', from: 'CUT_STARTER', to: 'PLAY' },
+      { type: 'score', player: 0, points: 2, reason: 'Fifteen two', cards: [],
+        source: 'play', total: 4 },
+      { type: 'phase', from: 'PLAY', to: 'SHOW_PONE' },
+      { type: 'showStart', player: 1, source: 'hand', cards: four,
+        starter: c(40), handTotal: 6 },
+      { type: 'score', player: 1, points: 2, reason: 'Fifteen two', cards: [],
+        source: 'hand', total: 2 },
+      { type: 'score', player: 1, points: 4, reason: 'Run of four', cards: [],
+        source: 'hand', total: 6 },
+      { type: 'phase', from: 'SHOW_PONE', to: 'SHOW_DEALER' }
+    ];
+    var expected = [
+      { reason: 'Fifteen two', points: 2 },
+      { reason: 'Run of four', points: 4 }
+    ];
+
+    var read = Game.readCounts(null, stream);
+    S.eq('one count closed', read.closed.length, 1);
+    S.eq('and none is left open', read.open, null);
+    S.deepEq('pegging points and his heels are not part of a count',
+      read.closed[0].items, expected);
+    S.eq('the total is the sum of what was awarded', read.closed[0].total, 6);
+    S.eq('the four cards being counted are carried', read.closed[0].cards.length, 4);
+    S.eq('and the cut with them', read.closed[0].starter.id, 40);
+    S.eq('whose count it is', read.closed[0].player, 1);
+    S.eq('and whether it is a hand or a crib', read.closed[0].source, 'hand');
+
+    // Fed one event at a time, which is the shape the controller actually sees:
+    // the engine emits one event per advance() through the whole count.
+    var open = null;
+    var closed = [];
+    for (var i = 0; i < stream.length; i++) {
+      var step = Game.readCounts(open, [stream[i]]);
+      open = step.open;
+      closed = closed.concat(step.closed);
+    }
+    S.eq('one event at a time closes the same single count', closed.length, 1);
+    S.deepEq('with the same items', closed[0].items, expected);
+
+    // A count that is still being read must not close early on anything else.
+    // Everything up to and including the first of the two scoring combinations.
+    var partial = Game.readCounts(null, stream.slice(0, 6));
+    S.eq('a count still in progress does not close', partial.closed.length, 0);
+    S.ok('and is reported as open', !!partial.open);
+    S.eq('holding what it has so far', partial.open.items.length, 1);
+  }
+
+  // SKIP MUST LAND ON THE SUMMARY, NOT PAST IT. Being able to see the count is
+  // the entire point of the pause, so fast-forward may remove the animation and
+  // nothing else. It is structurally safe — game.js reads the receipts off the
+  // events in runEvents() before a beat plays, and the gate hangs off the end of
+  // the drain — and this checks the animator's half: a skipped count still runs
+  // every settle and still reports every scoring beat.
+  function testSkipLandsOnTheSummary(S, Game, Engine) {
+    if (!Engine) return Promise.resolve();
+    var batches = gameBatches(Engine, 0xC0FFEE, 61);
+
+    var open = null;
+    var counts = [];
+    for (var b = 0; b < batches.length; b++) {
+      var read = Game.readCounts(open, batches[b].events);
+      open = read.open;
+      counts = counts.concat(read.closed);
+    }
+    S.ok('the stream contains counts to summarise', counts.length >= 6,
+      counts.length + ' counts');
+
+    function drive(press) {
+      var r = rig({ speed: 0.004 });
+      var seen = [];
+      var counted = 0;      // score beats belonging to a count, not to the play
+      var pressed = false;
+      var animsAtPress = -1;
+      r.anim.onBeat(function (beat) {
+        if (beat.kind === 'showStart' || beat.kind === 'score') {
+          seen.push(beat.kind + ':' + beat.event.source + ':' +
+            (beat.event.reason || ''));
+          if (beat.kind === 'score' &&
+            (beat.event.source === 'hand' || beat.event.source === 'crib')) counted++;
+        }
+        // One press, during the first count. Nothing presses it again.
+        if (press && !pressed && beat.kind === 'showStart') {
+          pressed = true;
+          animsAtPress = r.dom.animations.length;
+          r.anim.skip();
+        }
+      });
+      var i = 0;
+      function next() {
+        if (i >= batches.length) return Promise.resolve();
+        var batch = batches[i++];
+        return r.anim.play(batch.events, batch.state).then(next);
+      }
+      return next().then(function () {
+        return {
+          seen: seen, counted: counted, rig: r,
+          pressed: pressed, animsAtPress: animsAtPress
+        };
+      });
+    }
+
+    return drive(false).then(function (played) {
+      return drive(true).then(function (skipped) {
+        S.ok('the press landed inside a count', skipped.pressed);
+        S.deepEq('a skip during a count loses no scoring beat',
+          skipped.seen, played.seen);
+        S.eq('nothing animated after the press',
+          skipped.rig.dom.animations.length, skipped.animsAtPress);
+        S.ok('while the played run animated plenty',
+          played.rig.dom.animations.length > 20,
+          played.rig.dom.animations.length + ' animations');
+        S.eq('fast-forward is still armed at the end of the run',
+          skipped.rig.anim.isSkipping(), true);
+
+        // The receipts survive the fast-forward because they are read off the
+        // events, not off the animation. Same events, same summaries.
+        var listed = 0;
+        for (var i = 0; i < counts.length; i++) listed += counts[i].items.length;
+        S.eq('and every listed combination still has a beat behind it',
+          listed, skipped.counted);
+        skipped.rig.anim.resume();
+      });
+    });
+  }
+
+  // ...AND NEITHER MAY THE SKIP KEY ITSELF. The animator's half of "skip lands
+  // on the summary" is above; this is the keyboard's half, and it is where the
+  // bug actually was. Space is fast-forward during a count and Continue once the
+  // summary is up, the Skip button tells the player to tap it, and a tap is not
+  // auto-repeat — so the tap already on its way when the panel appeared used to
+  // dismiss it. Measured against the real page: twelve summaries opened and
+  // closed at 202-206ms each under a 200ms tap, none of them readable.
+  //
+  // Game.summaryKey is the pure decision, so the whole thing is testable as
+  // arithmetic on a clock. The settle time is read back out of the function
+  // rather than assumed, so the behaviour is asserted independently of the
+  // number; the number itself is pinned once, at the end, and for its own
+  // reason.
+  function testSpaceTapsCannotDismissTheSummary(S, Game) {
+    var press = function (key, now, settled, repeat) {
+      return Game.summaryKey(key, { now: now, settled: settled, repeat: !!repeat });
+    };
+
+    // A press inside the window comes back held, and the window it comes back
+    // with is how long the settle is.
+    var settle = press(' ', 0, 1).settled;
+    S.ok('Space has a settle window at all', settle > 0, settle + 'ms');
+    S.ok('long enough to outlast a hurried tap', settle >= 300, settle + 'ms');
+
+    // THE FAILING CASE, at both cadences the auditor measured. The summary opens
+    // at t=0 armed for `settle`, and the player keeps tapping the key the UI
+    // told them to tap. Every one of those taps must be swallowed, however many
+    // of them there are — a burst ends by stopping, not by running out.
+    [200, 120, 399].forEach(function (gap) {
+      var settled = settle;         // openSummary() arms it at now + settle
+      var closed = -1;
+      for (var i = 1; i <= 60 && closed === -1; i++) {
+        var v = press(' ', i * gap, settled);
+        settled = v.settled;
+        if (v.action === 'close') closed = i * gap;
+      }
+      S.eq('tapping Space every ' + gap + 'ms never dismisses the summary',
+        closed, -1, closed === -1 ? '' : 'dismissed after ' + closed + 'ms');
+    });
+
+    // A held key is the other half of the same gesture and was already covered;
+    // it stays covered, and it also keeps the window open behind it.
+    var held = press(' ', 10, settle, true);
+    S.eq('auto-repeat never activates Continue', held.action, 'hold');
+    S.ok('and pushes the window out behind it', held.settled > settle);
+    S.eq('a held Enter does not either', press('Enter', 9999, 0, true).action, 'hold');
+    S.eq('nor a held Escape', press('Escape', 9999, 0, true).action, 'hold');
+
+    // S is inert behind the summary, which is what made this a Space bug and not
+    // a design necessity — but it is still the player hurrying, so S-then-Space
+    // is one gesture rather than a skip followed by a Continue.
+    var sKey = press('s', 1000, 0);
+    S.eq('S is not the summary\'s key', sKey.action, 'pass');
+    S.eq('but it keeps the burst alive', sKey.settled, 1000 + settle);
+    S.eq('so a Space right behind it is still fast-forward',
+      press(' ', 1050, sKey.settled).action, 'hold');
+
+    // The window may not become a dead end. Two keys continue on the very first
+    // press however hard the player is leaning on Space, and Space itself comes
+    // back the moment the tapping stops.
+    S.eq('Enter continues immediately, inside the window',
+      press('Enter', 10, settle).action, 'close');
+    S.eq('Escape continues immediately, inside the window',
+      press('Escape', 10, settle).action, 'close');
+    S.eq('and Space continues once the burst has stopped',
+      press(' ', settle, settle).action, 'close');
+    S.eq('Tab is left alone so focus can leave the panel',
+      press('Tab', 10, settle).action, 'pass');
+    S.eq('and it does not disturb the window',
+      press('Tab', 10, settle).settled, settle);
+
+    // The settle is a property of the hand on the keyboard, not of the
+    // animation, so it is a plain constant — --t-slow's 400ms borrowed as a
+    // length of time. Pinned, because the obvious "tidy-up" is to multiply it by
+    // --anim-scale like every real duration, and at scale 0 that is no window at
+    // all — precisely where the counts are instant and the taps arrive fastest.
+    S.eq('the window is a constant, not a scaled token', settle, 400);
+  }
+
+  // =========================================================================
   //  Runner
   // =========================================================================
 
@@ -1474,6 +1916,11 @@
     }
     var Engine = root.Cribbage.Engine || null;
     if (!Engine) log('  (engine.js not loaded — the full-game drains are skipped)');
+    var Scoring = root.Cribbage.Scoring || null;
+    // game.js exports the count-summary fold and nothing else this suite needs.
+    // It touches no DOM until create() is called, so it loads cleanly here.
+    var Game = root.Cribbage.Game || null;
+    if (!Game) log('  (game.js not loaded — the count-summary group is skipped)');
 
     var sections = [
       ['beat order', function () { return testOrdering(S, Cards); }],
@@ -1492,7 +1939,25 @@
       ['game over', function () { return testNothingAfterGameOver(S, Cards); }],
       ['speed control', function () { return testSpeedControl(S); }],
       ['onBeat', function () { return testOnBeatIsSafe(S, Cards); }],
-      ['renderState wins', function () { return testRenderStateWins(S, Engine); }]
+      ['renderState wins', function () { return testRenderStateWins(S, Engine); }],
+      ['summary per count', function () {
+        if (Game && Engine) testSummaryPerCount(S, Game, Engine);
+      }],
+      ['nineteen hand', function () {
+        if (Game && Engine) testNineteenHand(S, Game, Engine);
+      }],
+      ['summary on a mid-count win', function () {
+        if (Game && Engine) testSummaryOnAMidCountWin(S, Game, Engine, Scoring);
+      }],
+      ['what belongs to a count', function () {
+        if (Game) testCountFoldIgnoresTheRestOfTheHand(S, Game, Cards);
+      }],
+      ['skip lands on the summary', function () {
+        return Game ? testSkipLandsOnTheSummary(S, Game, Engine) : Promise.resolve();
+      }],
+      ['the skip key cannot dismiss it', function () {
+        if (Game) testSpaceTapsCannotDismissTheSummary(S, Game);
+      }]
     ];
 
     // A section that throws or rejects is a failure like any other, but it must

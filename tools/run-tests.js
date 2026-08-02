@@ -59,6 +59,10 @@ var files = [
   // animate.js is a browser script but touches no DOM until create() is called,
   // and its suite injects its own document, so both load cleanly under Node.
   'js/animate.js',
+  // game.js likewise touches no DOM until create() is called. It is loaded for
+  // one export: Game.readCounts, the pure fold that builds the count summary
+  // out of engine events, which the animate suite drives with real games.
+  'js/game.js',
   'js/animate-tests.js'
 ];
 
