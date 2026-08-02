@@ -62,11 +62,23 @@
   --suit-d: var(--card-suit-red);
   --suit-c: var(--card-suit-black);
 
+  /* Deck backs. BOTH PLAYERS DRAW FROM ONE DECK, so the back is a single global
+     choice, never a per-player distinction — two different backs in one game is
+     a tell that the cards came from two packs. The palettes below are the four
+     the player can pick between; --card-back / --card-back-dark are the resolved
+     pair that cards.css actually paints with. */
   --card-back-red: #9d2b32;
   --card-back-red-dark: #6f1c22;
   --card-back-blue: #2a4b7c;
   --card-back-blue-dark: #1b3357;
+  --card-back-green: #2f6b46;
+  --card-back-green-dark: #1c4a2d;
+  --card-back-charcoal: #3d434c;
+  --card-back-charcoal-dark: #23272e;
   --card-back-ivory: #f2ece0;
+
+  --card-back: var(--card-back-red);
+  --card-back-dark: var(--card-back-red-dark);
 
   /* --- Text ------------------------------------------------------------ */
   --ink: #2b2119;              /* on light surfaces */
@@ -175,6 +187,23 @@
 [data-four-color="true"] {
   --suit-d: #1f5aa8;
   --suit-c: #1d7a3e;
+}
+
+/* The player's chosen deck back. Set on the root; applies to every face-down
+   card in the game at once, because there is only one deck on the table. */
+[data-deck-back="blue"] {
+  --card-back: var(--card-back-blue);
+  --card-back-dark: var(--card-back-blue-dark);
+}
+
+[data-deck-back="green"] {
+  --card-back: var(--card-back-green);
+  --card-back-dark: var(--card-back-green-dark);
+}
+
+[data-deck-back="charcoal"] {
+  --card-back: var(--card-back-charcoal);
+  --card-back-dark: var(--card-back-charcoal-dark);
 }
 
 /* Respect the OS setting without needing JS. The in-game speed control sets

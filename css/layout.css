@@ -882,6 +882,33 @@ body {
   .rail__mount > .crib-board > .crib-board__legend {
     display: none;
   }
+
+  /* Laying the board over turns its FORESHORTENING over with it. The holes are
+     ellipses squashed on the board's y-axis and the pegs lean down that axis,
+     which is what makes the vertical rail read as a board tilted away from you.
+     Rotate the board a quarter turn and that same squash lands horizontally:
+     the holes become tall ovals and the pegs point sideways, so the board reads
+     as tilted toward one shoulder instead. The projection has to be put back
+     upright on SCREEN, not in board space.
+
+     Counter-rotating each shape about its own centre does exactly that and
+     nothing else. Positions are untouched — fill-box origins pivot each ellipse
+     in place, so holePosition() and the peg anchors stay honest, which the
+     animation layer depends on. Rotating a squashed ellipse 90 degrees simply
+     swaps which axis it is squashed on, and the rim-highlight gradient rides
+     around with its ellipse, so the light stays consistent too. */
+  .rail__mount > .crib-board .cb-holes ellipse {
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: rotate(90deg);
+  }
+
+  /* The peg pivots about where it meets its hole, not about the middle of its
+     box — the art sits high in the box so the buried part has somewhere to go. */
+  .rail__mount > .crib-board .crib-peg__art {
+    transform-origin: 50% var(--cb-peg-anchor, 69.15%);
+    transform: rotate(90deg);
+  }
 }
 
 /* --- < 640px: phone ------------------------------------------------------- */

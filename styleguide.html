@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="en">
+<!-- Same default the game ships with; the picker in the deck-back section
+     rewrites this attribute in place. -->
+<html lang="en" data-deck-back="red">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,6 +16,26 @@
 <style>
   /* Development chrome for this page only. Every value below is a theme token;
      nothing here ships with the game. */
+
+  /* layout.css sets `html, body { height: 100%; overflow-x: hidden }` for the
+     game screen, where the app is exactly one viewport tall. On a long document
+     that combination makes <body> the scroll container instead of the page:
+     overflow-x on a full-height body forces its overflow-y to `auto`, so the
+     guide scrolls INSIDE body, window.scrollY never moves, and a full-page
+     screenshot captures one viewport. Undoing it here rather than in layout.css,
+     which this page does not own. Horizontal clipping is kept on <html>, which
+     is the element that propagates its overflow to the viewport. */
+  html {
+    height: auto;
+    overflow-x: hidden;
+  }
+
+  body {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
   body {
     background-color: var(--wood-edge);
     background-image:
@@ -153,6 +175,58 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--ink-soft);
+  }
+
+  /* PROMOTION CANDIDATE -> theme.css. theme.css deliberately declares no
+     [data-deck-back="red"] rule, because red is the :root default and the
+     attribute is meant to fall through to it. That is exactly right while the
+     root is the only element carrying the attribute — but it means a NESTED red
+     wrapper inherits whatever the root is currently set to instead of pinning
+     red, so the four-up comparison below silently loses its first card the
+     moment the picker moves off red. Re-asserting the default pair fixes it
+     with no new token and no hex. Reported for promotion; harmless here either
+     way, since it resolves to the same values the root already has. */
+  [data-deck-back="red"] {
+    --card-back: var(--card-back-red);
+    --card-back-dark: var(--card-back-red-dark);
+  }
+
+  /* The deck-back picker. Each button carries its own [data-deck-back], so the
+     dot below resolves --card-back against the button itself and the control
+     shows the colour it selects without naming a single hex. */
+  .btn--swatch::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background-image: linear-gradient(140deg, var(--card-back), var(--card-back-dark));
+    box-shadow: inset 0 0 0 1px var(--card-back-ivory);
+  }
+
+  /* The court detail. Overriding --card-w on the container is enough because
+     cards.css re-derives --card-h on .card itself; the :root declaration in
+     theme.css would otherwise have frozen the height at the page's card width
+     and come out squat. */
+  .detail {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--sp-4);
+    --card-w: 200px;
+  }
+
+  .detail--mid { --card-w: 88px; }
+  .detail--ship { --card-w: 52px; }
+
+  /* Only the enlarged row shrinks on a narrow screen. The 88px and 52px rows are
+     the whole point of the comparison, so they must not be caught by this — and
+     a bare `.detail` here would win on source order over the modifiers above. */
+  @media (max-width: 760px) {
+    .detail:not(.detail--mid):not(.detail--ship) {
+      --card-w: 132px;
+      gap: var(--sp-3);
+    }
   }
 
   /* --- token tables --- */
@@ -341,6 +415,7 @@
     <a href="#dimensions">Dimensions</a>
     <a href="#motion">Motion</a>
     <a href="#deck">The deck</a>
+    <a href="#backs">Deck back</a>
     <a href="#states">Card states</a>
     <a href="#board">The board</a>
     <a href="#furniture">Screen furniture</a>
@@ -397,7 +472,9 @@
     <p class="note">
       Rows are the four suits in card-id order (spades, hearts, diamonds, clubs), columns
       are ace through king. Every pip is an inline SVG <code>&lt;use&gt;</code> of one of
-      four symbols; the courts are a typographic panel, not an illustration.
+      four symbols. The courts are an art deco panel drawn in one inline SVG on the card&rsquo;s
+      own 5:7 viewBox — no figures, no image files — and the ace of spades gets the
+      oversized treatment a printed deck traditionally gives it.
     </p>
     <div class="controls">
       <span class="controls__label">Deck</span>
@@ -410,11 +487,50 @@
     <div class="board-surface">
       <div class="scroller"><div class="deck-grid" id="all-cards"></div></div>
     </div>
+
+    <h3>The courts, close up</h3>
+    <p class="note">
+      One vocabulary, three silhouettes: the King is a mitred square around a solid stepped
+      crown with the suit knocked out of it, the Queen a circle under a rising fan, the Jack
+      a deep-cut lozenge under two chevrons. Every motif is built once and cloned through a
+      half turn, so a court reads the same either way up — only the rank letter stays
+      upright. Stroke widths are in SVG user units, so the fine rules thin out with the card
+      instead of clogging: the row underneath is the same four cards at the sizes the game
+      actually deals.
+    </p>
+    <div class="board-surface">
+      <div class="detail" id="court-detail"></div>
+      <p class="caption">King, Queen, Jack and the ace of spades, enlarged.</p>
+      <div class="detail detail--mid" id="court-mid" style="margin-top:var(--sp-4)"></div>
+      <div class="detail detail--ship" id="court-ship" style="margin-top:var(--sp-3)"></div>
+      <p class="caption">The same four at 88px and at 52px — the two ends of --card-w.</p>
+    </div>
+  </section>
+
+  <!-- ==================================================== backs ========== -->
+  <section id="backs">
+    <h2>The deck back</h2>
+    <p class="note">
+      Both players draw from one deck, so the back is a single global choice and never a
+      per-player tell: there is no back argument anywhere in the card API. The colour comes
+      from <code>--card-back</code> / <code>--card-back-dark</code>, which theme.css resolves
+      from <code>[data-deck-back]</code> — an ordinary attribute selector, so it works on the
+      document root in the game and on a wrapper here. The four below are locked to their own
+      colour; the buttons set the attribute on <code>&lt;html&gt;</code>, which is exactly what
+      a settings screen will do, and every other face-down card on this page follows it.
+    </p>
+    <div class="controls" id="back-picker">
+      <span class="controls__label">Deck back</span>
+    </div>
+    <div class="board-surface">
+      <div class="row" id="back-cards"></div>
+      <p class="caption">Red is the <code>:root</code> default, so theme.css declares no rule for it — this page re-asserts one locally, or the red card would follow the picker like everything else.</p>
+    </div>
   </section>
 
   <!-- =================================================== states ========== -->
   <section id="states">
-    <h2>Backs and states</h2>
+    <h2>Card states</h2>
     <p class="note">
       Every state carries a cue that is not colour: selected rises, highlighted grows a
       solid ring, unplayable gets a hatch, face-down announces itself as face-down rather
@@ -430,11 +546,17 @@
   <section id="board">
     <h2>The board</h2>
     <p class="note">
-      Four boards at different score pairs. The third straddles the skunk line at 91 — the
-      pone is short of it, the dealer is past it. The fourth is a 61-point board, where the
-      skunk line moves to 31 with it.
+      The holes are drilled ellipses and the pegs are turned metal seen from the same
+      raised camera — one squash ratio foreshortens every hole and every ellipse in the peg
+      together, which is what stops the board reading as a plan view with side-on pegs
+      standing on it. Each pair below is chosen for its peg geometry: a fresh board stacks
+      both pegs in the start holes, the second is a one-point peg where the two are in
+      adjacent holes, the third is a big count that throws them most of a street apart, and
+      the fourth straddles the skunk line at 91. The last is a 61-point board, whose skunk
+      line moves to 31 with it.
     </p>
     <div class="boards" id="boards"></div>
+    <p class="caption">The rear peg is where the score stood before the last award; the board does the leapfrog itself.</p>
   </section>
 
   <!-- ================================================ furniture ========== -->
@@ -572,20 +694,44 @@
   probe.style.cssText = 'position:absolute;top:0;left:0;height:0;visibility:hidden;';
   document.body.appendChild(probe);
 
-  function resolved(name, kind) {
+  // board.css declares --peg-w and --peg-h on .crib-board rather than at :root,
+  // deliberately — a :root declaration would freeze the :root value of
+  // --hole-size and stop tracking any override down the tree. theme.css still
+  // carries its own :root pair from the old side-on peg, so reading those two
+  // off the document root reports a peg the board no longer draws. This probe
+  // sits inside a real .crib-board so they resolve in the context that owns them.
+  var boardProbe = el('div', 'crib-board');
+  boardProbe.setAttribute('aria-hidden', 'true');
+  boardProbe.style.cssText =
+    'position:absolute;top:0;left:0;width:0;height:0;min-height:0;padding:0;visibility:hidden;';
+  var boardProbeInner = document.createElement('div');
+  boardProbeInner.style.cssText = 'height:0;';
+  boardProbe.appendChild(boardProbeInner);
+  document.body.appendChild(boardProbe);
+
+  function hostFor(scope) {
+    return scope === 'board' ? boardProbeInner : probe;
+  }
+
+  function resolved(name, kind, scope) {
+    var node = hostFor(scope);
     if (kind === 'length') {
-      probe.style.width = 'var(' + name + ')';
-      var w = getComputedStyle(probe).width;
-      probe.style.width = '';
+      node.style.width = 'var(' + name + ')';
+      var w = getComputedStyle(node).width;
+      node.style.width = '';
       return w;
     }
     if (kind === 'time') {
-      probe.style.transitionDuration = 'var(' + name + ')';
-      var t = getComputedStyle(probe).transitionDuration;
-      probe.style.transitionDuration = '';
+      node.style.transitionDuration = 'var(' + name + ')';
+      var t = getComputedStyle(node).transitionDuration;
+      node.style.transitionDuration = '';
       return t;
     }
-    return value(name) || '—';
+    return declaredOn(name, scope) || '—';
+  }
+
+  function declaredOn(name, scope) {
+    return getComputedStyle(hostFor(scope)).getPropertyValue(name).trim();
   }
 
   // ---------------------------------------------------------------- type ---
@@ -621,9 +767,15 @@
     ['Pegs', ['--brass-light', '--brass', '--brass-dark', '--brass-deep',
       '--pewter-light', '--pewter', '--pewter-dark', '--pewter-deep']],
     ['Cards', ['--card-face', '--card-face-edge', '--card-ink', '--card-suit-red',
-      '--card-suit-black', '--suit-s', '--suit-h', '--suit-d', '--suit-c',
-      '--card-back-red', '--card-back-red-dark', '--card-back-blue',
-      '--card-back-blue-dark', '--card-back-ivory']],
+      '--card-suit-black', '--suit-s', '--suit-h', '--suit-d', '--suit-c']],
+    // --card-back / --card-back-dark are the resolved pair cards.css paints
+    // with, so these two chips follow the picker in the deck-back section.
+    ['Deck backs', ['--card-back', '--card-back-dark',
+      '--card-back-red', '--card-back-red-dark',
+      '--card-back-blue', '--card-back-blue-dark',
+      '--card-back-green', '--card-back-green-dark',
+      '--card-back-charcoal', '--card-back-charcoal-dark',
+      '--card-back-ivory']],
     ['Text', ['--ink', '--ink-soft', '--on-felt', '--on-felt-soft', '--on-wood']],
     ['Accents and states', ['--glow', '--glow-soft', '--danger', '--focus']]
   ];
@@ -640,7 +792,11 @@
       chip.appendChild(fill);
       var text = el('div', 'swatch__text');
       text.appendChild(el('div', 'swatch__name', name));
-      text.appendChild(el('div', 'swatch__value', value(name) || '—'));
+      var val = el('div', 'swatch__value', value(name) || '—');
+      // Tagged so the two resolved deck-back tokens can be re-read when the
+      // picker rewrites [data-deck-back]; every other token here is constant.
+      val.setAttribute('data-token', name);
+      text.appendChild(val);
       sw.appendChild(chip);
       sw.appendChild(text);
       grid.appendChild(sw);
@@ -662,8 +818,8 @@
     rows.forEach(function (r) {
       var tr = el('tr');
       tr.appendChild(el('td', null, r[0]));
-      tr.appendChild(el('td', null, resolved(r[0], r[2])));
-      var dec = el('td', 'declared', value(r[0]) || '—');
+      tr.appendChild(el('td', null, resolved(r[0], r[2], r[3])));
+      var dec = el('td', 'declared', declaredOn(r[0], r[3]) || '—');
       tr.appendChild(dec);
       tr.appendChild(el('td', null, r[1]));
       body.appendChild(tr);
@@ -681,8 +837,10 @@
     ['--hole-size', 'Drilled hole diameter; the whole board derives from it', 'length'],
     ['--hole-gap', 'Between holes inside a group of five', 'length'],
     ['--hole-group-gap', 'Between one group of five and the next', 'length'],
-    ['--peg-w', 'Peg shaft width', 'length'],
-    ['--peg-h', 'Peg height, head included', 'length'],
+    ['--peg-w', 'Peg box width. Declared on .crib-board, not :root', 'length', 'board'],
+    ['--peg-h', 'Peg box height, bore to crown. Same 116:139.4 ratio as its viewBox',
+      'length', 'board'],
+    ['--cb-squash', 'Foreshortening of every ellipse on the board plane', 'raw', 'board'],
     ['--board-rail-w', 'Width of the board rail on the desktop layout', 'length'],
     ['--sp-1', 'Hairline gaps', 'length'],
     ['--sp-2', 'Inside a control', 'length'],
@@ -745,6 +903,63 @@
   });
   setSize(68);
 
+  // --------------------------------------------------------- court detail ---
+
+  // One court of each rank plus the ace of spades. Three different suits, so the
+  // suit tint and the four pip symbols are all on show alongside the ornament.
+  var COURTS = [[13, 0], [12, 1], [11, 2], [1, 0]];
+
+  ['court-detail', 'court-mid', 'court-ship'].forEach(function (id) {
+    var host = document.getElementById(id);
+    COURTS.forEach(function (c) {
+      host.appendChild(RC.createCard(Cards.makeCard(c[0], c[1])));
+    });
+  });
+
+  // ---------------------------------------------------------- deck backs ---
+
+  // Each demo card is wrapped in its own [data-deck-back] rather than being
+  // asked for a colour: --card-back inherits down, so the four render side by
+  // side through exactly the mechanism the game uses, and there is no API by
+  // which a caller could request a per-player back.
+  var BACKS = [
+    ['red', 'Red — default'],
+    ['blue', 'Blue'],
+    ['green', 'Green'],
+    ['charcoal', 'Charcoal']
+  ];
+
+  var backHost = document.getElementById('back-cards');
+  var pickerHost = document.getElementById('back-picker');
+  var pickerButtons = [];
+
+  function setDeckBack(which) {
+    document.documentElement.setAttribute('data-deck-back', which);
+    pickerButtons.forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-deck-back') === which ? 'true' : 'false');
+    });
+    ['--card-back', '--card-back-dark'].forEach(function (name) {
+      var cell = document.querySelector('.swatch__value[data-token="' + name + '"]');
+      if (cell) cell.textContent = value(name) || '—';
+    });
+  }
+
+  BACKS.forEach(function (b) {
+    var wrap = el('div');
+    wrap.setAttribute('data-deck-back', b[0]);
+    wrap.appendChild(labelled(RC.createBack(), b[1]));
+    backHost.appendChild(wrap);
+
+    var btn = el('button', 'btn btn--quiet btn--swatch', b[1].split(' ')[0]);
+    btn.type = 'button';
+    btn.setAttribute('data-deck-back', b[0]);
+    btn.addEventListener('click', function () { setDeckBack(b[0]); });
+    pickerButtons.push(btn);
+    pickerHost.appendChild(btn);
+  });
+
+  setDeckBack(document.documentElement.getAttribute('data-deck-back') || 'red');
+
   // -------------------------------------------------------------- states ---
 
   var stateHost = document.getElementById('state-cards');
@@ -760,8 +975,9 @@
   }
 
   var five = Cards.makeCard(5, 1);
-  stateHost.appendChild(labelled(RC.createBack('red'), 'Back — red'));
-  stateHost.appendChild(labelled(RC.createBack('blue'), 'Back — blue'));
+  // No colour argument: this one follows whatever the picker above set on the
+  // root, which is the point.
+  stateHost.appendChild(labelled(RC.createBack(), 'Anonymous back'));
   stateHost.appendChild(labelled(RC.createCard(five, { interactive: true }), 'Interactive'));
   stateHost.appendChild(labelled(
     RC.createCard(Cards.makeCard(12, 0), { interactive: true, selected: true }), 'Selected'));
@@ -776,7 +992,13 @@
 
   var BOARD_CASES = [
     { target: 121, label: 'Fresh board — both pegs in the start holes', pegs: [[0, 0], [0, 0]] },
-    { target: 121, label: 'Mid game — 37 and 44', pegs: [[33, 37], [40, 44]] },
+    // A one-point peg is the tightest the geometry ever gets: the two pegs are
+    // in touching holes, which is where a peg drawn even slightly too wide
+    // starts overlapping its own partner.
+    { target: 121, label: 'A single point — the pegs in adjacent holes', pegs: [[36, 37], [43, 44]] },
+    // And the loosest: a 24-hand plus his heels throws the pair most of a
+    // street apart, so the leapfrog is unmistakable.
+    { target: 121, label: 'A big count — 24 and 12 apart', pegs: [[41, 65], [58, 70]] },
     { target: 121, label: 'Straddling the skunk line at 91', pegs: [[84, 88], [89, 91]] },
     { target: 61, label: '61-point board, its skunk line at 31', pegs: [[26, 28], [29, 31]] }
   ];

@@ -249,105 +249,138 @@
 }
 
 /* ===========================================================================
-   4. Court cards — J, Q, K
+   4. Court cards — J, Q, K — and the ace of spades
    ---------------------------------------------------------------------------
-   No illustrated figures. A tall panel flanked by the index margins, a double
-   rule with corner fleurons, the suit above and below, and one big serif
-   letter. It is the treatment a plain-back deck would actually use, so it
-   reads as a decision rather than as art that failed to load.
+   Still no illustrated figures, but no longer a bare frame either: an art deco
+   cartouche, drawn as one inline SVG on a 100 x 140 viewBox (the card's own
+   5:7, so one SVG unit is 1% of --card-w). render-cards.js owns the geometry;
+   every colour, opacity and stroke weight is here.
+
+   Two things carry the design. First, symmetry: the ornament is built for the
+   top half and cloned through a 180deg rotation, so a court card reads the same
+   either way up exactly as a printed one does — the rank letter is the single
+   upright exception, because it has to be legible at a glance. Second, weight:
+   stroke widths are in SVG user units, so they scale WITH the card. The fine
+   detail therefore drops below a pixel on its own at the small end of --card-w
+   and quietly fades out, leaving the frame, the medallion and the letter. That
+   is the graceful degradation, and it costs nothing to maintain.
    =========================================================================== */
 
-/* J, Q and K are the only courts, so the panel only has to clear a one-glyph
-   index — which is why it can run taller and wider than the pip field does. */
 .card__court {
   position: absolute;
-  inset: calc(var(--card-h) * 0.075) calc(var(--card-w) * 0.248);
+  inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: calc(var(--card-h) * 0.038) 0;
+  justify-content: center;
 }
 
-.card__court-rule {
+.card__deco {
   position: absolute;
-  border: var(--hairline) solid currentColor;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The <use> pips resolve currentColor against this, so the deco suit is
+     always the same ink as the corner index — including under four-colour. */
+  color: var(--suit);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
   pointer-events: none;
 }
 
-.card__court-rule--outer {
-  inset: 0;
-  border-radius: calc(var(--card-radius) * 0.5);
-  opacity: 0.55;
+/* The panel ground. Barely there on purpose: enough to seat the ornament as a
+   panel rather than as lines floating on the stock, not enough to tint the
+   card. Anything heavier and a fan of four courts turns muddy. */
+.card__deco-ground {
+  fill: currentColor;
+  fill-opacity: 0.045;
+  stroke: none;
 }
 
-.card__court-rule--inner {
-  inset: calc(var(--card-w) * 0.035);
-  opacity: 0.3;
+/* Knocks the ornament out from behind the medallion so the rank letter always
+   lands on clean paper, whatever is radiating past it. */
+.card__deco-ground-face {
+  fill: var(--card-face);
+  stroke: none;
 }
 
-/* Lozenges centred on the inner rule's four corners, so the rule appears to
-   pass through them. Rotated squares rather than glyphs — a real ornament
-   would turn to mush at 52px. Offset = inner inset minus half the side. */
-.card__court-fleur {
-  --fleur: calc(var(--card-w) * 0.042);
-  position: absolute;
-  width: var(--fleur);
-  height: var(--fleur);
-  background: currentColor;
-  opacity: 0.4;
-  transform: rotate(45deg);
+/* Deco is a high-contrast style: crisp lines and solid masses, not a wash. The
+   temptation with ornament is to knock it back until it stops competing, and
+   the result reads grey and apologetic. These sit close to full strength and
+   the RESTRAINT is in how few marks there are, not in how faint they are. */
+.card__deco-rule {
+  stroke-width: 1.6;
+  stroke-opacity: 0.82;
 }
 
-.card__court-fleur--tl,
-.card__court-fleur--tr { top: calc(var(--card-w) * 0.014); }
-
-.card__court-fleur--bl,
-.card__court-fleur--br { bottom: calc(var(--card-w) * 0.014); }
-
-.card__court-fleur--tl,
-.card__court-fleur--bl { left: calc(var(--card-w) * 0.014); }
-
-.card__court-fleur--tr,
-.card__court-fleur--br { right: calc(var(--card-w) * 0.014); }
-
-.card__court-pip {
-  width: calc(var(--card-w) * 0.16);
-  height: calc(var(--card-w) * 0.16);
-  flex: 0 0 auto;
+.card__deco-rule-fine {
+  stroke-width: 1;
+  stroke-opacity: 0.46;
 }
 
-.card__court-pip--bottom {
-  transform: rotate(180deg);
+.card__deco-solid {
+  fill: currentColor;
+  fill-opacity: 0.86;
+  stroke: none;
+}
+
+/* Suit reversed out of a solid mass. The King's crown is the only place this
+   happens, and it is what makes him the heaviest of the three. */
+.card__deco-knockout {
+  fill: var(--card-face);
+  stroke: none;
+}
+
+/* The metallic hairline. Deco leans on brass, but brass on cream is low
+   contrast by nature, so it is used once per card and left thin: it should
+   register as a warm glint when you look at the card, never compete with the
+   suit when you are only counting it. --brass-dark rather than --brass because
+   at this weight the lighter tone disappears entirely on --card-face. */
+.card__deco-brass {
+  stroke: var(--brass-dark);
+  stroke-width: 1;
+  stroke-opacity: 0.85;
+}
+
+.card__deco-pip {
+  fill: currentColor;
+  stroke: none;
 }
 
 .card__court-letter {
+  position: relative;
   font-family: var(--font-serif);
-  font-size: calc(var(--card-w) * 0.43);
+  font-size: calc(var(--card-w) * 0.33);
   font-weight: 700;
   line-height: 1;
   letter-spacing: calc(var(--card-w) * -0.012);
   /* Optical centring: serif caps sit high in their em box. */
-  margin-top: calc(var(--card-h) * -0.01);
+  margin-top: calc(var(--card-h) * -0.008);
 }
 
 /* ===========================================================================
    5. The back — a woven cross-hatch inside an ivory margin
    =========================================================================== */
 
+/* ONE deck is on the table, so there is exactly one back. --card-back and
+   --card-back-dark are the resolved pair theme.css derives from
+   [data-deck-back] on the document root; this file never picks a palette and
+   nothing per-card or per-player may override it. Two different backs in one
+   game says the cards came out of two packs.
+
+   The local aliases exist only so the pattern below reads; they are not a hook.
+   To preview another colour, put [data-deck-back="green"] on any ancestor — the
+   tokens inherit — which is how the styleguide shows all four at once. */
 .card__face--back {
-  --back: var(--card-back-red);
-  --back-dark: var(--card-back-red-dark);
+  --back: var(--card-back);
+  --back-dark: var(--card-back-dark);
   --weave-step: calc(var(--card-w) * 0.115);
   --weave-line: calc(var(--card-w) * 0.042);
   --weave-half: calc(var(--card-w) * 0.0575);
   background: var(--card-back-ivory);
   box-shadow: inset 0 0 0 var(--hairline) var(--card-face-edge);
-}
-
-.card[data-back='blue'] .card__face--back {
-  --back: var(--card-back-blue);
-  --back-dark: var(--card-back-blue-dark);
 }
 
 .card__back-field {

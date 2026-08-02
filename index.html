@@ -1,5 +1,9 @@
 <!doctype html>
-<html lang="en">
+<!-- One deck on the table, so the back is one global choice made here rather
+     than per card. theme.css has no rule for "red" on purpose — it is the
+     :root default and the attribute simply falls through to it. Phase 6's
+     settings screen swaps this with a single setAttribute. -->
+<html lang="en" data-deck-back="red">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">

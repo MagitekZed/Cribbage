@@ -95,6 +95,76 @@
     10: [[1, 1], [3, 1], [2, 3], [1, 5], [3, 5], [1, 9], [3, 9], [2, 11], [1, 13], [3, 13]]
   };
 
+  // --- Art deco panel geometry -----------------------------------------------
+  // The court panels and the ace of spades are drawn in one inline SVG per card
+  // with a 100 x 140 viewBox — the card's own 5:7 — so one SVG unit is exactly
+  // 1% of the card width and every number below reads as a percentage. Nothing
+  // here carries a colour or a stroke width: those are classes, so cards.css
+  // stays the only place a value can be tuned and theme.css the only place a
+  // colour is spelled out.
+  //
+  // A real court card looks the same either way up, because the figure is drawn
+  // as two half-figures. Every ornament below is built once for the top half and
+  // then CLONED through rotate(180 50 70), so that symmetry is exact by
+  // construction rather than by carefully typed coordinates. The rank letter is
+  // the single deliberate exception: it stays upright in the medallion, because
+  // a court card is read at speed in a fan of four and a letter you have to
+  // resolve twice is a letter that slows the game down.
+
+  var D_W = 100;
+  var D_H = 140;
+  var D_CX = 50;
+  var D_CY = 70;
+
+  // The corner indices occupy roughly x 3.5-19.5 / y 4.5-34.5 and its half-turn
+  // twin, so the frame runs narrow past them and steps OUT across the middle
+  // band where nothing is in the way. That step is what buys the medallion its
+  // size, and a stepped cartouche is deco vocabulary rather than a compromise.
+  function cartouche(halfW, halfBand, top, cut, bandTop, bandCut) {
+    var bot = D_H - top;
+    var bandBot = D_H - bandTop;
+    var l = D_CX - halfW;
+    var r = D_CX + halfW;
+    var lb = D_CX - halfBand;
+    var rb = D_CX + halfBand;
+    return [
+      [l + cut, top], [r - cut, top],
+      [r, top + cut], [r, bandTop - bandCut],
+      [rb, bandTop], [rb, bandBot],
+      [r, bandBot + bandCut], [r, bot - cut],
+      [r - cut, bot], [l + cut, bot],
+      [l, bot - cut], [l, bandBot + bandCut],
+      [lb, bandBot], [lb, bandTop],
+      [l, bandTop - bandCut], [l, top + cut]
+    ];
+  }
+
+  // Mitred square, centred. `cut` does all the work: a small cut gives the
+  // King's blocky medallion, a large one the Jack's lozenge, and both are the
+  // same construction so the three courts stay a family.
+  function octagon(half, cut, cx, cy) {
+    cx = cx === undefined ? D_CX : cx;
+    cy = cy === undefined ? D_CY : cy;
+    return [
+      [cx - half + cut, cy - half], [cx + half - cut, cy - half],
+      [cx + half, cy - half + cut], [cx + half, cy + half - cut],
+      [cx + half - cut, cy + half], [cx - half + cut, cy + half],
+      [cx - half, cy + half - cut], [cx - half, cy - half + cut]
+    ];
+  }
+
+  function pointStr(list) {
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      out.push(round(list[i][0]) + ',' + round(list[i][1]));
+    }
+    return out.join(' ');
+  }
+
+  function round(n) {
+    return Math.round(n * 100) / 100;
+  }
+
   // --- Small DOM helpers -----------------------------------------------------
 
   function el(tag, cls) {
@@ -107,6 +177,14 @@
     var node = document.createElementNS(SVG_NS, tag);
     // SVGElement.className is a read-only SVGAnimatedString, so never assign it.
     if (cls) node.setAttribute('class', cls);
+    return node;
+  }
+
+  function svgShape(tag, cls, attrs) {
+    var node = svgEl(tag, cls);
+    for (var k in attrs) {
+      if (Object.prototype.hasOwnProperty.call(attrs, k)) node.setAttribute(k, String(attrs[k]));
+    }
     return node;
   }
 
@@ -215,21 +293,211 @@
     return field;
   }
 
-  function buildCourt(rankLabel, suitKey) {
-    var panel = el('div', 'card__court');
-    panel.appendChild(el('span', 'card__court-rule card__court-rule--outer'));
-    panel.appendChild(el('span', 'card__court-rule card__court-rule--inner'));
+  // --- The deco panel --------------------------------------------------------
 
-    var corners = ['tl', 'tr', 'bl', 'br'];
-    for (var i = 0; i < corners.length; i++) {
-      panel.appendChild(el('span', 'card__court-fleur card__court-fleur--' + corners[i]));
+  // A suit symbol placed in panel coordinates. Same four symbols as the pips, so
+  // a court card's suit is drawn with exactly the ink a number card's is — the
+  // suit is worked into the ornament rather than sitting on top of it.
+  function decoPip(suitKey, cx, cy, size, cls) {
+    var use = svgShape('use', cls || 'card__deco-pip', {
+      x: round(cx - size / 2),
+      y: round(cy - size / 2),
+      width: round(size),
+      height: round(size)
+    });
+    var ref = '#' + symbolId(suitKey);
+    use.setAttribute('href', ref);
+    use.setAttributeNS(XLINK_NS, 'xlink:href', ref);
+    return use;
+  }
+
+  // Angles run clockwise from straight up, which is how the ornament reads.
+  function polar(cx, cy, deg, r) {
+    var rad = deg * Math.PI / 180;
+    return [cx + Math.sin(rad) * r, cy - Math.cos(rad) * r];
+  }
+
+  function ray(cls, cx, cy, deg, r0, r1) {
+    var a = polar(cx, cy, deg, r0);
+    var b = polar(cx, cy, deg, r1);
+    return svgShape('line', cls, { x1: round(a[0]), y1: round(a[1]), x2: round(b[0]), y2: round(b[1]) });
+  }
+
+  // Arc of `r` about (cx, cy), symmetric about the vertical, opening upward.
+  function fanArc(cls, cx, cy, r, spread) {
+    var a = polar(cx, cy, -spread, r);
+    var b = polar(cx, cy, spread, r);
+    return svgShape('path', cls, {
+      d: 'M' + round(a[0]) + ' ' + round(a[1]) +
+         'A' + round(r) + ' ' + round(r) + ' 0 0 1 ' + round(b[0]) + ' ' + round(b[1])
+    });
+  }
+
+  function poly(tag, cls, list) {
+    return svgShape(tag, cls, { points: pointStr(list) });
+  }
+
+  // --- The three court motifs ------------------------------------------------
+  // Each returns the TOP half only; buildCourt clones it through a half turn. So
+  // everything below lives in roughly y 15-48, above the medallion, and the
+  // rotated copy fills y 92-125 for free.
+
+  // KING — a solid stepped ziggurat with the suit knocked OUT of it. Deco lives
+  // on the positive/negative flip, and the solid mass is what gives the King his
+  // weight: he is the only one of the three with a filled silhouette, and it is
+  // the last thing to disappear as the card shrinks.
+  function kingMotif(suitKey) {
+    var g = svgEl('g');
+    g.appendChild(poly('polygon', 'card__deco-solid', [
+      [32, 45], [32, 38], [36, 38], [36, 31], [40, 31], [40, 25],
+      [60, 25], [60, 31], [64, 31], [64, 38], [68, 38], [68, 45]
+    ]));
+    // Big enough that the crown reads as a frame around the suit rather than as
+    // a dark mass with a speck in it — the difference is everything at 52px.
+    g.appendChild(decoPip(suitKey, 50, 35, 13.5, 'card__deco-knockout'));
+    return g;
+  }
+
+  // QUEEN — a rising fan of arcs and spokes springing off the medallion's crown,
+  // the suit riding the crest. The elaborate, radial one: nothing filled, but
+  // three times the line count of the Jack.
+  function queenMotif(suitKey) {
+    var g = svgEl('g');
+    var fx = D_CX;
+    var fy = 50;          // the fan springs from the top of the medallion
+    var radii = [10, 15, 20];
+    var i;
+    for (i = 0; i < radii.length; i++) {
+      g.appendChild(fanArc(i === 1 ? 'card__deco-rule-fine' : 'card__deco-rule', fx, fy, radii[i], 72));
     }
+    var spokes = [-60, -30, 0, 30, 60];
+    for (i = 0; i < spokes.length; i++) {
+      g.appendChild(ray('card__deco-rule-fine', fx, fy, spokes[i], 9.5, 20.5));
+    }
+    g.appendChild(decoPip(suitKey, 50, 22.5, 12));
+    return g;
+  }
 
-    panel.appendChild(pipGlyph(suitKey, 'card__court-pip card__court-pip--top'));
+  // JACK — two solid chevrons between a pair of thin columns. The lean one: the
+  // same confident geometry, a third of the ink.
+  function jackMotif(suitKey) {
+    var g = svgEl('g');
+    var apex = [29, 38];
+    for (var i = 0; i < apex.length; i++) {
+      var a = apex[i];
+      g.appendChild(poly('polygon', 'card__deco-solid', [
+        [36, a + 8], [50, a], [64, a + 8],
+        [64, a + 11.5], [50, a + 3.5], [36, a + 11.5]
+      ]));
+    }
+    g.appendChild(svgShape('line', 'card__deco-rule-fine', { x1: 32, y1: 30, x2: 32, y2: 49.5 }));
+    g.appendChild(svgShape('line', 'card__deco-rule-fine', { x1: 68, y1: 30, x2: 68, y2: 49.5 }));
+    g.appendChild(decoPip(suitKey, 50, 20.5, 11));
+    return g;
+  }
+
+  // --- Medallions ------------------------------------------------------------
+  // One family, three silhouettes: a blocky mitred square for the King, a circle
+  // for the Queen, a deep-cut lozenge for the Jack. Silhouette is what still
+  // distinguishes the three at 52px, once the ornament inside them has faded —
+  // which is exactly what the old identical panels were failing to do.
+
+  function medallion(rank) {
+    var g = svgEl('g', 'card__deco-medallion');
+    if (rank === 13) {
+      g.appendChild(poly('polygon', 'card__deco-ground-face', octagon(20, 7)));
+      g.appendChild(poly('polygon', 'card__deco-rule', octagon(20, 7)));
+      g.appendChild(poly('polygon', 'card__deco-brass', octagon(17.5, 6)));
+    } else if (rank === 12) {
+      g.appendChild(svgShape('circle', 'card__deco-ground-face', { cx: D_CX, cy: D_CY, r: 20 }));
+      g.appendChild(svgShape('circle', 'card__deco-rule', { cx: D_CX, cy: D_CY, r: 20 }));
+      g.appendChild(svgShape('circle', 'card__deco-brass', { cx: D_CX, cy: D_CY, r: 17.5 }));
+    } else {
+      // Deep mitres, so the Jack's lozenge is a different silhouette from the
+      // King's square one at any size — shape, not detail, is what survives
+      // being read across a table.
+      g.appendChild(poly('polygon', 'card__deco-ground-face', octagon(20, 12)));
+      g.appendChild(poly('polygon', 'card__deco-rule', octagon(20, 12)));
+      g.appendChild(poly('polygon', 'card__deco-brass', octagon(17.5, 10.5)));
+    }
+    return g;
+  }
+
+  // --- Panel assembly --------------------------------------------------------
+
+  function decoSvg() {
+    var svg = svgEl('svg', 'card__deco');
+    svg.setAttribute('viewBox', '0 0 ' + D_W + ' ' + D_H);
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    return svg;
+  }
+
+  // The stepped frame both the courts and the ace of spades sit inside: a heavy
+  // rule with a brass hairline running parallel just inside it. Deco almost
+  // never uses a single line where it can use two of different weight.
+  function decoFrame(svg) {
+    var outer = cartouche(26, 30, 11, 7, 48, 5);
+    svg.appendChild(poly('polygon', 'card__deco-ground', outer));
+    svg.appendChild(poly('polygon', 'card__deco-rule', outer));
+    svg.appendChild(poly('polygon', 'card__deco-brass', cartouche(23.4, 27.4, 13.6, 6.4, 49, 5)));
+  }
+
+  function buildCourt(rankLabel, suitKey, rank) {
+    var panel = el('div', 'card__court');
+    var svg = decoSvg();
+    decoFrame(svg);
+
+    var motif = rank === 13 ? kingMotif(suitKey)
+      : rank === 12 ? queenMotif(suitKey)
+        : jackMotif(suitKey);
+    svg.appendChild(motif);
+    // The half-turn twin. cloneNode rather than a second build so the two can
+    // never drift apart, and rotate() rather than mirrored coordinates so the
+    // suit pip comes out genuinely upside down the way a printed one does.
+    var twin = motif.cloneNode(true);
+    twin.setAttribute('transform', 'rotate(180 ' + D_CX + ' ' + D_CY + ')');
+    svg.appendChild(twin);
+
+    svg.appendChild(medallion(rank));
+    panel.appendChild(svg);
+
     var letter = el('span', 'card__court-letter');
     letter.textContent = rankLabel;
     panel.appendChild(letter);
-    panel.appendChild(pipGlyph(suitKey, 'card__court-pip card__court-pip--bottom'));
+    return panel;
+  }
+
+  // The ace of spades gets the oversized treatment every printed deck gives it —
+  // it is where deck designers traditionally show off — in the same deco
+  // language as the courts: the frame, a stepped crest above and below, and one
+  // big spade sitting where the rank letter would be.
+  function buildAceOfSpades(suitKey) {
+    var panel = el('div', 'card__court card__court--ace');
+    var svg = decoSvg();
+    decoFrame(svg);
+
+    // The King's ziggurat, under a brass lozenge. Reusing the courts' vocabulary
+    // is deliberate: the ace should read as the same deck showing off, not as a
+    // second idea that wandered in.
+    var crest = svgEl('g');
+    crest.appendChild(poly('polygon', 'card__deco-solid', [
+      [36, 43], [36, 38], [40, 38], [40, 33], [45, 33], [45, 28],
+      [55, 28], [55, 33], [60, 33], [60, 38], [64, 38], [64, 43]
+    ]));
+    crest.appendChild(poly('polygon', 'card__deco-brass', [[50, 17], [54.5, 21.5], [50, 26], [45.5, 21.5]]));
+    svg.appendChild(crest);
+    var twin = crest.cloneNode(true);
+    twin.setAttribute('transform', 'rotate(180 ' + D_CX + ' ' + D_CY + ')');
+    svg.appendChild(twin);
+
+    // The court medallion, oversized, with the spade standing where a rank
+    // letter would.
+    svg.appendChild(poly('polygon', 'card__deco-ground-face', octagon(23.5, 8)));
+    svg.appendChild(poly('polygon', 'card__deco-rule', octagon(23.5, 8)));
+    svg.appendChild(poly('polygon', 'card__deco-brass', octagon(21, 7)));
+    svg.appendChild(decoPip(suitKey, D_CX, D_CY, 38));
+    panel.appendChild(svg);
     return panel;
   }
 
@@ -242,7 +510,13 @@
 
     face.appendChild(buildIndex(rankLabel, suitKey, 'tl'));
     face.appendChild(buildIndex(rankLabel, suitKey, 'br'));
-    face.appendChild(card.rank >= 11 ? buildCourt(rankLabel, suitKey) : buildPips(card.rank, suitKey));
+    if (card.rank >= 11) {
+      face.appendChild(buildCourt(rankLabel, suitKey, card.rank));
+    } else if (card.rank === 1 && suitKey === 'S') {
+      face.appendChild(buildAceOfSpades(suitKey));
+    } else {
+      face.appendChild(buildPips(card.rank, suitKey));
+    }
     return face;
   }
 
@@ -276,9 +550,6 @@
       node.setAttribute('role', 'img');
     }
 
-    var back = opts.back === 'blue' ? 'blue' : 'red';
-    node.setAttribute('data-back', back);
-
     if (card) {
       node.setAttribute('data-card-id', String(card.id));
       node.setAttribute('data-rank', String(card.rank));
@@ -308,8 +579,20 @@
     return build(card, opts);
   }
 
-  function createBack(which) {
-    return build(null, { back: which, faceDown: true });
+  // An anonymous face-down card with no rank or suit in the DOM at all — the
+  // only honest way to show the opponent's hand, since a real card turned over
+  // would still be sitting there in the markup for anyone who opens devtools.
+  //
+  // There is no back-colour argument and there must never be one again. Both
+  // players draw from ONE deck, so the back is a single global choice: it comes
+  // from --card-back / --card-back-dark, which theme.css resolves from
+  // [data-deck-back] on the document root. To show the four options side by side
+  // the styleguide wraps a demo card in an element carrying that same attribute;
+  // the tokens inherit, so nothing has to be threaded through this file.
+  function createBack(opts) {
+    // Tolerates the old createBack('red') call so the game keeps rendering while
+    // render.js is updated; the colour argument is simply thrown away.
+    return build(null, (opts && typeof opts === 'object') ? opts : {});
   }
 
   // --- Public: state setters -------------------------------------------------

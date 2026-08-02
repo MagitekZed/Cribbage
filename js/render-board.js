@@ -22,7 +22,229 @@
 
   // Fallbacks used only if theme.css somehow has not loaded; keeps the board from
   // collapsing to zero rather than silently drawing nothing.
-  var FALLBACK = { hole: 8, gapIn: 12, gapOut: 19.2, pegW: 10, pegH: 21 };
+  var FALLBACK = { hole: 8, gapIn: 12, gapOut: 19.2, pegW: 10, pegH: 14 };
+
+  // ------------------------------------------------------------ projection ---
+
+  // ONE viewpoint for the whole board. The board is a plank lying on a table
+  // seen from where a seated player's eyes actually are — steep, but not
+  // straight down — so a true circle drawn on the wood foreshortens to this
+  // ratio vertically. Everything that lies flat on the board (the drilled
+  // holes, the game-hole inlay) and every ellipse in the peg are squashed by
+  // exactly this number. That one shared ratio is what makes the wood and the
+  // metal read as one photograph instead of two.
+  //
+  // The board itself is NOT transformed. holePosition() keeps returning honest,
+  // unprojected coordinates, because Phase 4 has to fly pegs between holes in a
+  // coordinate space it can reason about. The projection is carried entirely by
+  // the shapes drawn at each point, which is enough to sell it and costs the
+  // animation layer nothing.
+  var SQUASH = 0.8;
+
+  // sin(elevation) = SQUASH, so cos(elevation) is the fraction of a peg's real
+  // height that survives as on-screen height. The peg's proportions below are
+  // derived through this rather than guessed against it, which is what keeps
+  // the metal and the wood on the same viewpoint even if SQUASH is retuned.
+  var RISE = Math.sqrt(1 - SQUASH * SQUASH);   // 0.6 at SQUASH 0.8
+
+  // Peg geometry, in units where the hole DIAMETER is 100 — so `bore` below is
+  // literally the hole the peg is standing in, at exactly the radius the track
+  // drills it. Drawn from the same high angle as everything else: the head's
+  // top face dominates, and the edge band and shaft below it run DOWN the
+  // screen, toward the viewer, because the top of the board is the far edge.
+  //
+  // `stand` is how far the peg really sticks up out of the board — four fifths
+  // of a hole diameter — and the projection turns that into the head's screen
+  // rise. Standing it any taller separates the head from its hole and the peg
+  // reads as a mushroom growing beside the track rather than as metal seated in
+  // it, which is the whole failure this geometry exists to fix.
+  var PEG = {
+    headRx: 58,
+    edge: 8,          // on-screen thickness of the head's edge band
+    crownRx: 39,
+    crownRise: 4,     // the crown stands proud, so it rides up the screen
+    stand: 80,        // real height above the wood, before projection
+    bore: 50,         // the drilled hole, same radius the track uses
+    shaftHx: 33,      // narrower than the bore, so a ring of hole survives
+    top: 2            // slack above the head, inside the box
+  };
+  PEG.rise = r2(PEG.stand * RISE);
+  PEG.headRy = r2(PEG.headRx * SQUASH);
+  PEG.crownRy = r2(PEG.crownRx * SQUASH);
+  PEG.boreRy = r2(PEG.bore * SQUASH);
+  PEG.vw = PEG.headRx * 2;
+  PEG.cx = PEG.headRx;
+  PEG.headCy = r2(PEG.top + PEG.headRy);
+  PEG.holeY = r2(PEG.headCy + PEG.rise);
+  PEG.vh = r2(PEG.holeY + PEG.boreRy + 3);
+
+  // A peg seen from above, as SVG. Eleven gradients per peg and only four pegs
+  // on the board, so each one carries its own defs rather than reaching across
+  // documents for shared ones. The stop colours come from --pg-* custom
+  // properties that board.css sets per metal, so brass and pewter share this
+  // entire drawing and differ only in four tokens.
+  function pegSvg(id) {
+    var P = PEG;
+    var bandTop = P.headCy;
+    var bandBot = r2(P.headCy + P.edge);
+
+    // The edge band is the union of the top face and a copy of it dropped by
+    // `edge`: the sliver of the lower ellipse that escapes below the upper one
+    // is exactly the strip of machined edge you see on a disc from up here.
+    var bandPath =
+      'M 0 ' + bandTop +
+      ' A ' + P.headRx + ' ' + P.headRy + ' 0 0 0 ' + P.vw + ' ' + bandTop +
+      ' L ' + P.vw + ' ' + bandBot +
+      ' A ' + P.headRx + ' ' + P.headRy + ' 0 0 1 0 ' + bandBot + ' Z';
+
+    // The shaft stops where it actually enters the wood: its base is a circle
+    // lying on the board plane, so it curves away with the same squash as the
+    // hole and finishes SHORT of the hole's near rim. What that leaves is a dark
+    // crescent of bore wall below the shaft, and that crescent is the one detail
+    // that makes the peg look seated rather than stood on top of the board.
+    var shaftPath =
+      'M ' + (P.cx - P.shaftHx) + ' ' + P.headCy +
+      ' L ' + (P.cx - P.shaftHx) + ' ' + P.holeY +
+      ' A ' + P.shaftHx + ' ' + r2(P.shaftHx * SQUASH) + ' 0 0 0 ' +
+        (P.cx + P.shaftHx) + ' ' + P.holeY +
+      ' L ' + (P.cx + P.shaftHx) + ' ' + P.headCy + ' Z';
+
+    var head = 'cx="' + P.cx + '" cy="' + P.headCy + '" rx="' + P.headRx +
+      '" ry="' + P.headRy + '"';
+    var bore = 'cx="' + P.cx + '" cy="' + P.holeY + '" rx="' + P.bore +
+      '" ry="' + P.boreRy + '"';
+
+    // A turned peg head is a flat flange with a domed crown standing in the
+    // middle of it, and looking down its axis is the ONLY viewpoint from which
+    // those two are concentric. That concentricity is the strongest cue in the
+    // whole drawing — a sphere can never show it — so the moment it is there the
+    // head stops reading as a ball photographed from the side.
+    var crownCy = r2(P.headCy - P.crownRise);
+    var crown = 'cx="' + P.cx + '" cy="' + crownCy + '" rx="' + P.crownRx +
+      '" ry="' + P.crownRy + '"';
+    var specX = P.cx - 14;
+    var specY = r2(crownCy - 12);
+
+    return '' +
+      '<svg class="crib-peg__art" viewBox="0 0 ' + P.vw + ' ' + P.vh + '" ' +
+        'aria-hidden="true" focusable="false">' +
+        '<defs>' +
+          // Same recipe the track uses for a bore, because it IS one: lightest
+          // just under the far rim, pitch dark at the bottom.
+          '<radialGradient id="' + id + '-bore" cx="50%" cy="50%" r="62%" fx="50%" fy="16%">' +
+            '<stop class="cb-stop-shadow" offset="0" stop-opacity="0"/>' +
+            '<stop class="cb-stop-shadow" offset="0.5" stop-opacity="0.4"/>' +
+            '<stop class="cb-stop-shadow" offset="1" stop-opacity="1"/>' +
+          '</radialGradient>' +
+          // The flange is FLAT, so its tone barely moves and it stays dark: a
+          // strong smooth light-to-dark sweep across a near-round shape is
+          // sphere shading, and a sphere is what made the old peg look like it
+          // had been photographed from the side. All the modelling that is
+          // allowed to look round happens on the crown instead.
+          '<linearGradient id="' + id + '-face" x1="0.25" y1="0" x2="0.75" y2="1">' +
+            '<stop class="cb-pg-dark" offset="0"/>' +
+            '<stop class="cb-pg-dark" offset="0.55"/>' +
+            '<stop class="cb-pg-deep" offset="1"/>' +
+          '</linearGradient>' +
+          // The crown IS domed, and inside a flat dark ring the dome now reads
+          // as a dome rather than as the whole peg.
+          '<linearGradient id="' + id + '-crown" x1="0.22" y1="0" x2="0.78" y2="1">' +
+            '<stop class="cb-pg-light" offset="0"/>' +
+            '<stop class="cb-pg-mid" offset="0.58"/>' +
+            '<stop class="cb-pg-dark" offset="1"/>' +
+          '</linearGradient>' +
+          // Light catches the far edge of the metal exactly as it catches the
+          // upper rim of every hole. Same light, same board.
+          '<linearGradient id="' + id + '-rim" x1="0.2" y1="0" x2="0.8" y2="1">' +
+            '<stop class="cb-pg-light" offset="0" stop-opacity="1"/>' +
+            '<stop class="cb-pg-light" offset="0.4" stop-opacity="0"/>' +
+          '</linearGradient>' +
+          '<radialGradient id="' + id + '-spec" cx="50%" cy="50%" r="50%">' +
+            '<stop class="cb-pg-light" offset="0" stop-opacity="0.95"/>' +
+            '<stop class="cb-pg-light" offset="0.5" stop-opacity="0.5"/>' +
+            '<stop class="cb-pg-light" offset="1" stop-opacity="0"/>' +
+          '</radialGradient>' +
+          // The crown's own shadow on the flange: what makes the two read as two
+          // parts at different heights rather than as one flat set of rings.
+          '<radialGradient id="' + id + '-crownshade" cx="50%" cy="50%" r="50%">' +
+            '<stop class="cb-stop-shadow" offset="0.62" stop-opacity="0.6"/>' +
+            '<stop class="cb-stop-shadow" offset="1" stop-opacity="0"/>' +
+          '</radialGradient>' +
+          // Across the edge band and the shaft: a cylinder, but a dark one. A
+          // hot specular here reads as the lit flank of a standing post, which
+          // is precisely the old peg's problem.
+          '<linearGradient id="' + id + '-band" x1="0" y1="0" x2="1" y2="0">' +
+            '<stop class="cb-pg-deep" offset="0"/>' +
+            '<stop class="cb-pg-dark" offset="0.2"/>' +
+            '<stop class="cb-pg-mid" offset="0.36"/>' +
+            '<stop class="cb-pg-dark" offset="0.66"/>' +
+            '<stop class="cb-pg-deep" offset="1"/>' +
+          '</linearGradient>' +
+          // Only the bottom sliver of the band path is ever visible — the rest
+          // is behind the face — so its shading has to live in the last fifth.
+          '<linearGradient id="' + id + '-collar" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop class="cb-stop-shadow" offset="0.8" stop-opacity="0.15"/>' +
+            '<stop class="cb-stop-shadow" offset="1" stop-opacity="0.65"/>' +
+          '</linearGradient>' +
+          // The shaft is under the head and standing in a hole: metal, but metal
+          // in shadow the whole way, and black where the bore swallows it.
+          '<linearGradient id="' + id + '-sink" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop class="cb-stop-shadow" offset="0" stop-opacity="0.95"/>' +
+            '<stop class="cb-stop-shadow" offset="0.5" stop-opacity="0.62"/>' +
+            '<stop class="cb-stop-shadow" offset="1" stop-opacity="1"/>' +
+          '</linearGradient>' +
+          // A second pass of the same, because one layer of a 62%-alpha token
+          // cannot take brass all the way down: --brass-deep sits at the same
+          // value as the oak, so a brass peg's base needs more shadow than a
+          // pewter one to read as a base at all.
+          '<linearGradient id="' + id + '-sink2" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop class="cb-stop-shadow" offset="0" stop-opacity="0.5"/>' +
+            '<stop class="cb-stop-shadow" offset="0.5" stop-opacity="0.22"/>' +
+            '<stop class="cb-stop-shadow" offset="1" stop-opacity="0.7"/>' +
+          '</linearGradient>' +
+          '<radialGradient id="' + id + '-pool" cx="50%" cy="50%" r="50%">' +
+            '<stop class="cb-stop-shadow" offset="0" stop-opacity="0.72"/>' +
+            '<stop class="cb-stop-shadow" offset="0.55" stop-opacity="0.5"/>' +
+            '<stop class="cb-stop-shadow" offset="0.8" stop-opacity="0.24"/>' +
+            '<stop class="cb-stop-shadow" offset="1" stop-opacity="0"/>' +
+          '</radialGradient>' +
+        '</defs>' +
+        // Contact shadow on the wood: an ellipse, squashed like everything else
+        // lying flat, thrown down and to the right to agree with the light that
+        // catches the upper rim of every hole. It spills outside the viewBox,
+        // which is why board.css lets this svg overflow.
+        '<ellipse cx="' + (P.cx + 19) + '" cy="' + r2(P.holeY + 14) + '" rx="58" ry="' +
+          r2(58 * SQUASH) + '" fill="url(#' + id + '-pool)"/>' +
+        // The peg redraws its own hole rather than trusting the one underneath
+        // to survive: the contact shadow would otherwise wash it out, and a peg
+        // with no visible hole around it is a peg standing ON the board.
+        //
+        // PHASE 4: this means a peg CARRIES a hole with it. A peg in flight is
+        // not in one, so hide the socket for the duration of a hop — board.css
+        // does it off data-lifted on the peg element.
+        '<g class="crib-peg__socket">' +
+          '<ellipse class="cb-bore" ' + bore + '/>' +
+          '<ellipse ' + bore + ' fill="url(#' + id + '-bore)"/>' +
+        '</g>' +
+        '<path d="' + shaftPath + '" fill="url(#' + id + '-band)"/>' +
+        '<path d="' + shaftPath + '" fill="url(#' + id + '-sink)"/>' +
+        '<path d="' + shaftPath + '" fill="url(#' + id + '-sink2)"/>' +
+        '<path d="' + bandPath + '" fill="url(#' + id + '-band)"/>' +
+        '<path d="' + bandPath + '" fill="url(#' + id + '-collar)"/>' +
+        '<ellipse ' + head + ' fill="url(#' + id + '-face)"/>' +
+        '<ellipse ' + head + ' fill="none" stroke="url(#' + id +
+          '-rim)" stroke-width="4"/>' +
+        '<ellipse cx="' + (P.cx + 2) + '" cy="' + r2(crownCy + 4) + '" rx="' +
+          (P.crownRx + 3) + '" ry="' + r2((P.crownRx + 3) * SQUASH) +
+          '" fill="url(#' + id + '-crownshade)"/>' +
+        '<ellipse ' + crown + ' fill="url(#' + id + '-crown)"/>' +
+        '<ellipse ' + crown + ' fill="none" stroke="url(#' + id +
+          '-rim)" stroke-width="2.6"/>' +
+        '<ellipse cx="' + specX + '" cy="' + specY +
+          '" rx="19" ry="7.5" fill="url(#' + id + '-spec)" transform="rotate(-18 ' +
+          specX + ' ' + specY + ')"/>' +
+      '</svg>';
+  }
 
   function el(tag, cls) {
     var n = document.createElement(tag);
@@ -202,11 +424,19 @@
     pegLayer.setAttribute('aria-hidden', 'true');
     board.appendChild(pegLayer);
 
+    // The projection, published to CSS. Neither of these is a design token —
+    // like --cb-scale they are measurements this module owns and board.css
+    // consumes. --cb-peg-anchor is the point in the peg drawing that has to sit
+    // on the hole, as a fraction of the drawing's height.
+    board.style.setProperty('--cb-squash', String(SQUASH));
+    board.style.setProperty('--cb-peg-anchor', r2(PEG.holeY / PEG.vh * 100) + '%');
+
     var players = [0, 1].map(function (p) {
       var pegs = [0, 1].map(function (i) {
         var peg = el('div', 'crib-peg crib-peg--' + (p === 0 ? 'brass' : 'pewter'));
         peg.setAttribute('data-player', String(p));
         peg.setAttribute('data-slot', String(i));
+        peg.innerHTML = pegSvg(uid + '-pg' + p + i);
         pegLayer.appendChild(peg);
         return peg;
       });
@@ -412,6 +642,11 @@
       if (doubleSkunk >= 5) marks += markAt(doubleSkunk, true);
 
       // ---- holes ------------------------------------------------------------
+      // Ellipses, not circles: a drilled hole is a circle lying flat on the
+      // board, so it foreshortens by SQUASH like everything else on that plane.
+      // The rim highlight then lands on the upper edge of an ellipse, which is
+      // exactly where the light catches the chamfer of a real drilled hole.
+      //
       // Three passes rather than three-element groups: identical output, a third
       // of the DOM depth, and 700-odd nodes is enough to care.
       var bores = '', depth = '', rims = '';
@@ -420,13 +655,12 @@
           var pt = holes[pl][hi];
           var rad = (hi - 1 === target) ? g.hr * 1.3 : g.hr;
           var cx = r2(pt.x), cy = r2(pt.y);
-          bores += '<circle class="cb-bore" cx="' + cx + '" cy="' + cy +
-            '" r="' + r2(rad) + '"/>';
-          depth += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r2(rad) +
-            '" fill="url(#' + uid + '-bore)"/>';
-          rims += '<circle class="cb-rim" cx="' + cx + '" cy="' + cy + '" r="' +
-            r2(rad) + '" stroke="url(#' + uid + '-rim)" stroke-width="' +
-            r2(Math.max(0.8, rad * 0.34)) + '"/>';
+          var rx = r2(rad), ry = r2(rad * SQUASH);
+          var ax = ' cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '"';
+          bores += '<ellipse class="cb-bore"' + ax + '/>';
+          depth += '<ellipse' + ax + ' fill="url(#' + uid + '-bore)"/>';
+          rims += '<ellipse class="cb-rim"' + ax + ' stroke="url(#' + uid +
+            '-rim)" stroke-width="' + r2(Math.max(0.8, rad * 0.34)) + '"/>';
         }
       }
 
@@ -438,10 +672,13 @@
       var my = (e0.y + e1.y) / 2;
       var sep = Math.sqrt((e1.x - e0.x) * (e1.x - e0.x) + (e1.y - e0.y) * (e1.y - e0.y));
       var rr = g.hr * 2.0;
+      // Squashed with the holes it encloses: it is an inlay lying on the same
+      // plane, so it cannot keep a plan-view height while they lose theirs.
+      var rrY = rr * SQUASH;
       var ang = Math.atan2(e1.y - e0.y, e1.x - e0.x) * 180 / Math.PI;
       var extra = '<rect class="cb-game-ring" x="' + r2(mx - sep / 2 - rr) + '" y="' +
-        r2(my - rr) + '" width="' + r2(sep + 2 * rr) + '" height="' + r2(2 * rr) +
-        '" rx="' + r2(rr) + '" stroke-width="' + r2(Math.max(1, g.h * 0.18)) +
+        r2(my - rrY) + '" width="' + r2(sep + 2 * rr) + '" height="' + r2(2 * rrY) +
+        '" rx="' + r2(rrY) + '" stroke-width="' + r2(Math.max(1, g.h * 0.18)) +
         '" transform="rotate(' + r2(ang) + ' ' + r2(mx) + ' ' + r2(my) + ')"/>';
 
       content.innerHTML =

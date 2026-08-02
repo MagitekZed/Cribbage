@@ -231,11 +231,10 @@
     var interactive = opts.interactive !== false;
     var uid = 'cr' + (++seq);
 
-    // One physical deck, so the deck, the crib and the starter all share a back.
-    // The opponent's held cards take the other back, which is the fastest way to
-    // tell their hand from the stock at a glance.
-    var DECK_BACK = 'red';
-    var OPP_BACK = 'blue';
+    // There is ONE deck on the table, so every face-down card — the stock, the
+    // opponent's hand, the crib — shows the same back. It is not a per-player
+    // choice this file gets to make: the colour lives in --card-back, which
+    // theme.css resolves from [data-deck-back] on the document root.
 
     while (rootEl.firstChild) rootEl.removeChild(rootEl.firstChild);
 
@@ -431,20 +430,20 @@
     // static element, and the button is parked for the next deal.
     var pool = Object.create(null);
 
-    function poolCard(card, isInteractive, back) {
+    function poolCard(card, isInteractive) {
       var key = (isInteractive ? 'b' : 'd') + card.id;
       var node = pool[key];
       if (!node) {
-        node = RC.createCard(card, { interactive: isInteractive, back: back || DECK_BACK });
+        node = RC.createCard(card, { interactive: isInteractive });
         pool[key] = node;
       }
       return node;
     }
 
-    function cardSpec(card, isInteractive, back, tune) {
+    function cardSpec(card, isInteractive, tune) {
       return {
         key: 'card' + card.id,
-        make: function () { return poolCard(card, isInteractive, back); },
+        make: function () { return poolCard(card, isInteractive); },
         tune: tune
       };
     }
@@ -452,10 +451,10 @@
     // Face-down cards the player is not entitled to see are built WITHOUT an
     // identity — createBack, not a real card turned over — so the opponent's
     // hand is not sitting in the DOM waiting to be read out of devtools.
-    function backSpec(key, back) {
+    function backSpec(key) {
       return {
         key: key,
-        make: function () { return RC.createBack(back); }
+        make: function () { return RC.createBack(); }
       };
     }
 
@@ -491,14 +490,14 @@
       if (player === me) {
         var live = interactive && !showing;
         for (i = 0; i < cards.length; i++) {
-          specs.push(cardSpec(cards[i], live, DECK_BACK, tuneMine(cards[i], hints, live)));
+          specs.push(cardSpec(cards[i], live, tuneMine(cards[i], hints, live)));
         }
       } else if (showing) {
         for (i = 0; i < cards.length; i++) {
-          specs.push(cardSpec(cards[i], false, OPP_BACK, tuneTheirs(cards[i], hints)));
+          specs.push(cardSpec(cards[i], false, tuneTheirs(cards[i], hints)));
         }
       } else {
-        for (i = 0; i < cards.length; i++) specs.push(backSpec('back' + i, OPP_BACK));
+        for (i = 0; i < cards.length; i++) specs.push(backSpec('back' + i));
       }
       syncRow(container, specs);
     }
@@ -540,7 +539,7 @@
           })(i)
         });
       }
-      if (n > 0) specs.push(backSpec('top', DECK_BACK));
+      if (n > 0) specs.push(backSpec('top'));
       else specs.push(wellSpec('deck-well'));
       syncRow(deckStack, specs);
       setText(deckSlot.note, n === 1 ? '1 card left' : n + ' cards left');
@@ -549,7 +548,7 @@
     function paintStarter(state, hints) {
       var specs = [];
       if (state.starter) {
-        specs.push(cardSpec(state.starter, false, DECK_BACK, function (node) {
+        specs.push(cardSpec(state.starter, false, function (node) {
           RC.setFaceDown(node, false);
           RC.setHighlighted(node, has(hints.highlighted, state.starter.id));
         }));
@@ -567,7 +566,7 @@
       var i;
       if (revealed) {
         for (i = 0; i < state.crib.length; i++) {
-          specs.push(cardSpec(state.crib[i], false, DECK_BACK, (function (c) {
+          specs.push(cardSpec(state.crib[i], false, (function (c) {
             return function (node) {
               RC.setFaceDown(node, false);
               RC.setHighlighted(node, has(hints.highlighted, c.id));
@@ -575,7 +574,7 @@
           })(state.crib[i])));
         }
       } else {
-        for (i = 0; i < state.crib.length; i++) specs.push(backSpec('crib' + i, DECK_BACK));
+        for (i = 0; i < state.crib.length; i++) specs.push(backSpec('crib' + i));
       }
       if (!specs.length) specs.push(wellSpec('crib-well'));
       syncRow(cribPile, specs);
@@ -600,7 +599,7 @@
               var item = el('li', 'pile__item');
               var owner = el('span', 'pile__owner');
               owner.setAttribute('aria-hidden', 'true');
-              item.appendChild(poolCard(entry.card, false, DECK_BACK));
+              item.appendChild(poolCard(entry.card, false));
               item.appendChild(owner);
               return item;
             },

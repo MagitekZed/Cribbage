@@ -2,9 +2,19 @@
    board.css — the cribbage board: oak, drilled holes, brass and pewter pegs.
 
    Every colour, radius, shadow and dimension comes from theme.css via var().
-   Nothing here is a literal colour. The one non-token custom property is
-   --cb-scale, which is not a design token: render-board.js writes the measured
-   fit-to-height ratio into it so the pegs shrink with the track.
+   Nothing here is a literal colour. The non-token custom properties are
+   --cb-scale, --cb-squash and --cb-peg-anchor, none of which are design tokens:
+   render-board.js measures or owns all three and writes them onto .crib-board.
+   The declarations below are only fallbacks for the two the script publishes.
+
+   PROJECTION. The board and the pegs are drawn from one viewpoint — a plank on
+   a table seen from where a seated player's eyes are. render-board.js owns the
+   single ratio (SQUASH) that expresses it and publishes it as --cb-squash, for
+   this file and for the Phase 4 layer, whose peg hop has to arc in the same
+   projection everything else is drawn in. The board is never 3D-transformed:
+   hole POSITIONS stay honest and unprojected so Phase 4 can fly pegs between
+   them in a sane coordinate space. Only the shapes drawn at those positions
+   are foreshortened.
 
    No transitions live in this file. Phase 4 owns motion; all it needs is that
    a peg's position is left/top, which it is.
@@ -12,8 +22,27 @@
 
 .crib-board {
   --cb-scale: 1;
-  /* A seated peg dips below the hole centre so the bore disappears behind it. */
-  --cb-peg-seat: calc(var(--hole-size) * var(--cb-scale) * 0.3);
+  /* Fallbacks for the two values render-board.js publishes, so the board still
+     draws correctly if the CSS is inspected without the script having run. */
+  --cb-squash: 0.8;
+  --cb-peg-anchor: 69.15%;
+
+  /* PROMOTION CANDIDATES -> theme.css (--peg-w, --peg-h).
+     The peg used to be a side-on cylinder 2.6 hole-diameters tall, which is what
+     a peg looks like at eye level and nothing like what it looks like from a
+     seated player's angle. Redrawn in the board's own projection it is mostly
+     an elliptical top face, and it is much shorter on screen.
+
+     These two are declared on .crib-board rather than at :root deliberately. A
+     custom property that calls var() resolves against the element it is DECLARED
+     on, so a :root declaration would freeze the :root value of --hole-size and
+     stop tracking any override further down the tree — the same trap theme.css
+     documents for --card-h.
+
+     The 116:139.4 ratio is the peg SVG's viewBox in render-board.js. Change one
+     and the drawing letterboxes inside its box; change both together. */
+  --peg-w: calc(var(--hole-size) * 1.16);
+  --peg-h: calc(var(--hole-size) * 1.394);
 
   position: relative;
   isolation: isolate;                 /* keeps the grain blending with the oak,
@@ -170,72 +199,58 @@
   pointer-events: none;
 }
 
+/* The peg's box is the bounding box of its drawing, and --cb-peg-anchor is the
+   height fraction at which the drawing puts the hole. Pulling the box up by that
+   fraction rather than by 100% is what seats the peg IN its hole: the head ends
+   up standing above the hole and the shaft ends up inside it, which is where the
+   parts of a peg actually are when you look down at one. */
 .crib-peg {
   position: absolute;
   left: 0;
   top: 0;
   width: calc(var(--peg-w) * var(--cb-scale));
   height: calc(var(--peg-h) * var(--cb-scale));
-  border-radius: 42% 42% 30% 30% / 22% 22% 10% 10%;
-  transform: translate(-50%, calc(-100% + var(--cb-peg-seat)));
-  filter: drop-shadow(1px 2px 2px var(--hole-shadow));
+  transform: translate(-50%, calc(-1 * var(--cb-peg-anchor)));
 }
 
-/* Cylindrical shading: dark edge, a hot specular band a third of the way across,
-   a softer return on the far side. Two edges of light is what stops a gradient
-   reading as a flat lozenge. The second layer darkens the foot, where the post
-   is occluded by its own hole. */
+/* The peg draws its own bore so the hole survives its contact shadow, which
+   means a peg carries a hole around with it. A peg in flight is not in one:
+   Phase 4 sets data-lifted for the length of a hop and the socket goes with the
+   board it left. No transition here — the motion layer owns all timing. */
+.crib-peg[data-lifted='true'] .crib-peg__socket {
+  opacity: 0;
+}
+
+.crib-peg__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The contact shadow is deliberately larger than the peg and offset off the
+     lower right of the box, so it has to be allowed out. */
+  overflow: visible;
+}
+
+/* Brass and pewter share the entire drawing and differ only here. The gradient
+   stops inside the peg read these four, so a metal is four tokens rather than a
+   second copy of eleven gradients. */
 .crib-peg--brass {
-  background-image:
-    linear-gradient(0deg, var(--brass-deep) 0%, transparent 30%),
-    linear-gradient(96deg,
-      var(--brass-deep) 0%,
-      var(--brass-dark) 11%,
-      var(--brass-light) 31%,
-      var(--brass) 48%,
-      var(--brass-dark) 76%,
-      var(--brass-deep) 97%);
+  --pg-light: var(--brass-light);
+  --pg-mid: var(--brass);
+  --pg-dark: var(--brass-dark);
+  --pg-deep: var(--brass-deep);
 }
 
 .crib-peg--pewter {
-  background-image:
-    linear-gradient(0deg, var(--pewter-deep) 0%, transparent 30%),
-    linear-gradient(96deg,
-      var(--pewter-deep) 0%,
-      var(--pewter-dark) 11%,
-      var(--pewter-light) 31%,
-      var(--pewter) 48%,
-      var(--pewter-dark) 76%,
-      var(--pewter-deep) 97%);
+  --pg-light: var(--pewter-light);
+  --pg-mid: var(--pewter);
+  --pg-dark: var(--pewter-dark);
+  --pg-deep: var(--pewter-deep);
 }
 
-/* The head: a proud cap, wider than the shaft, with a collar shadow beneath it
-   so the two read as separate turned parts rather than one blob. */
-.crib-peg::before {
-  content: '';
-  position: absolute;
-  left: -18%;
-  top: -5%;
-  width: 136%;
-  height: 27%;
-  border-radius: 50%;
-  background-image: inherit;
-  box-shadow: 0 2px 2px -1px var(--hole-shadow);
-}
-
-/* Contact shadow where the peg meets the board, thrown to the lower right to
-   agree with the light on the hole rims. */
-.crib-peg::after {
-  content: '';
-  position: absolute;
-  left: -22%;
-  bottom: -6%;
-  width: 156%;
-  height: 22%;
-  border-radius: 50%;
-  background-image: radial-gradient(closest-side, var(--hole-shadow), transparent);
-  z-index: -1;
-}
+.cb-pg-light { stop-color: var(--pg-light); }
+.cb-pg-mid { stop-color: var(--pg-mid); }
+.cb-pg-dark { stop-color: var(--pg-dark); }
+.cb-pg-deep { stop-color: var(--pg-deep); }
 
 /* --- Score plate ---------------------------------------------------------- */
 
