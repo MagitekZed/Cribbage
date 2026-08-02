@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 'use strict';
 
-// Node CLI driver for the cribbage engine test suite.
+// Node CLI driver for the cribbage test suites.
 //
 // The js/*.js files are classic browser scripts (no module syntax), so they are read
 // off disk and evaluated with vm.runInThisContext rather than require()d. That keeps a
 // single copy of the engine serving both file:// in a browser and this runner.
 //
-//   node tools/run-tests.js               fast suite
+//   node tools/run-tests.js               fast suites (scoring + engine)
 //   node tools/run-tests.js --exhaustive  adds the full C(52,5) enumeration
+//   node tools/run-tests.js --games=N     engine fuzz volume (default 2000)
 //   node tools/run-tests.js --verbose     prints every passing assertion
 
 var fs = require('fs');
@@ -18,20 +19,32 @@ var path = require('path');
 var argv = process.argv.slice(2);
 var options = {
   exhaustive: argv.indexOf('--exhaustive') !== -1,
-  verbose: argv.indexOf('--verbose') !== -1
+  verbose: argv.indexOf('--verbose') !== -1,
+  games: 2000
 };
 
+function usage() {
+  return 'Usage: node tools/run-tests.js [--exhaustive] [--games=N] [--verbose]';
+}
+
 if (argv.indexOf('--help') !== -1 || argv.indexOf('-h') !== -1) {
-  console.log('Usage: node tools/run-tests.js [--exhaustive] [--verbose]');
+  console.log(usage());
   process.exit(0);
 }
 
-var unknown = argv.filter(function (a) {
-  return ['--exhaustive', '--verbose', '--help', '-h'].indexOf(a) === -1;
+var unknown = [];
+argv.forEach(function (a) {
+  if (['--exhaustive', '--verbose', '--help', '-h'].indexOf(a) !== -1) return;
+  var m = /^--games=(\d+)$/.exec(a);
+  if (m) {
+    options.games = parseInt(m[1], 10);
+    return;
+  }
+  unknown.push(a);
 });
 if (unknown.length) {
   console.error('Unknown flag(s): ' + unknown.join(' '));
-  console.error('Usage: node tools/run-tests.js [--exhaustive] [--verbose]');
+  console.error(usage());
   process.exit(1);
 }
 
@@ -40,7 +53,9 @@ var files = [
   'js/cards.js',
   'js/scoring.js',
   'js/scoring-naive.js',
-  'js/tests.js'
+  'js/engine.js',
+  'js/tests.js',
+  'js/engine-tests.js'
 ];
 
 files.forEach(function (relative) {
@@ -64,31 +79,67 @@ if (!globalThis.Cribbage || !globalThis.Cribbage.Tests) {
   console.error('js/tests.js did not register Cribbage.Tests');
   process.exit(1);
 }
+if (!globalThis.Cribbage.EngineTests) {
+  console.error('js/engine-tests.js did not register Cribbage.EngineTests');
+  process.exit(1);
+}
 
 function log(line) {
   console.log(line);
 }
 
 console.log('');
-console.log('Cribbage engine test suite');
-console.log('  show cases: ' + globalThis.Cribbage.Tests.showCaseCount +
+console.log('Cribbage test suites');
+console.log('  scoring — show cases: ' + globalThis.Cribbage.Tests.showCaseCount +
   '   play sequences: ' + globalThis.Cribbage.Tests.playCaseCount +
   (options.exhaustive ? '   + exhaustive enumeration' : ''));
+console.log('  engine  — flow cases + ' + options.games + ' fuzzed games');
 console.log('');
 
+var suites = [];
 var started = Date.now();
-var result = globalThis.Cribbage.Tests.run({
+
+console.log('  [scoring]');
+var scoringStarted = Date.now();
+var scoring = globalThis.Cribbage.Tests.run({
   exhaustive: options.exhaustive,
   verbose: options.verbose,
   log: log
 });
-var elapsed = ((Date.now() - started) / 1000).toFixed(2);
-
-var failures = result.results.filter(function (r) { return !r.ok; });
+suites.push({
+  name: 'scoring',
+  result: scoring,
+  elapsed: (Date.now() - scoringStarted) / 1000
+});
 
 console.log('');
-if (failures.length) {
-  console.log('FAILURES (' + failures.length + '):');
+console.log('  [engine]');
+var engineStarted = Date.now();
+var engine = globalThis.Cribbage.EngineTests.run({
+  games: options.games,
+  verbose: options.verbose,
+  log: log
+});
+suites.push({
+  name: 'engine',
+  result: engine,
+  elapsed: (Date.now() - engineStarted) / 1000
+});
+
+var elapsed = ((Date.now() - started) / 1000).toFixed(2);
+
+var passed = 0;
+var failed = 0;
+suites.forEach(function (s) {
+  passed += s.result.passed;
+  failed += s.result.failed;
+});
+
+console.log('');
+suites.forEach(function (s) {
+  var failures = s.result.results.filter(function (r) { return !r.ok; });
+  if (!failures.length) return;
+  console.log('FAILURES in the ' + s.name + ' suite (' + failures.length + '):');
   failures.forEach(function (f, i) {
     console.log('');
     console.log('  ' + (i + 1) + ') ' + f.name);
@@ -97,12 +148,17 @@ if (failures.length) {
     if (f.detail) console.log('     ' + f.detail);
   });
   console.log('');
-}
+});
 
 console.log('----------------------------------------------------------');
-console.log('  ' + result.passed + ' passed, ' + result.failed + ' failed   (' +
-  elapsed + 's)');
+suites.forEach(function (s) {
+  console.log('  ' + (s.name + '          ').slice(0, 9) + ' ' +
+    String(s.result.passed).padStart(6, ' ') + ' passed, ' + s.result.failed +
+    ' failed   (' + s.elapsed.toFixed(2) + 's)');
+});
+console.log('  ' + 'total    ' + String(passed).padStart(6, ' ') + ' passed, ' + failed +
+  ' failed   (' + elapsed + 's)');
 console.log('----------------------------------------------------------');
 console.log('');
 
-process.exit(result.failed === 0 ? 0 : 1);
+process.exit(failed === 0 ? 0 : 1);
