@@ -1,0 +1,506 @@
+/* ---------------------------------------------------------------------------
+   cards.css — the playing cards: faces, pip layout, court panels, backs, and
+   the 3D flip.
+
+   Every colour, duration, shadow and radius here comes from theme.css. The only
+   values declared locally are geometric ratios, and they all resolve against
+   --card-w, so one token rescales a card from 52px to 88px with nothing to fix
+   up. Horizontal ratios are expressed against --card-w and vertical ones
+   against --card-h on purpose: a card is 5:7, and mixing the two axes is how
+   layouts drift when the deck is resized.
+
+   Those ratios live on .card rather than :root so they stay private to this
+   file and never collide with the shared token namespace.
+   --------------------------------------------------------------------------- */
+
+.card,
+.card *,
+.card *::before,
+.card *::after {
+  box-sizing: border-box;
+}
+
+/* ===========================================================================
+   1. The card box
+   =========================================================================== */
+
+.card {
+  /* theme.css declares --card-h at :root, so it substitutes the :root value of
+     --card-w and stops tracking any container that overrides --card-w further
+     down. Re-deriving it here is what makes --card-w the single knob: set it on
+     a hand, a deck stack or one card and the whole card follows. The ratio comes
+     from --card-ratio rather than a literal so this cannot silently disagree
+     with theme.css if the card proportions are ever changed. */
+  --card-h: calc(var(--card-w) * var(--card-ratio));
+
+  /* --- private geometry, all derived from --card-w --- */
+  --pip: calc(var(--card-w) * 0.175);        /* centre pip box, square */
+  --pip-ace: calc(var(--card-w) * 0.42);
+  /* The row-1 pips sit at almost the same height as the corner index, so the
+     only thing keeping them from reading as one cluster is this gutter. */
+  --pip-field-x: calc(var(--card-w) * 0.245);
+  --pip-field-y: calc(var(--card-h) * 0.075);
+  --index-x: calc(var(--card-w) * 0.035);
+  --index-y: calc(var(--card-h) * 0.032);
+  --index-w: calc(var(--card-w) * 0.16);
+  /* Larger than a printed card's index, on purpose: at the 52px end of
+     --card-w a true-to-life ratio would be about 7px and unreadable. */
+  --index-rank: calc(var(--card-w) * 0.21);
+  --index-pip: calc(var(--card-w) * 0.09);
+  --hairline: max(1px, calc(var(--card-w) * 0.009));
+  --ring: max(1px, calc(var(--card-w) * 0.035));
+
+  /* Suit colour is a single indirection so [data-four-color] on any ancestor
+     re-tints pips, indices and court frames together, for free. */
+  --suit: var(--suit-s);
+
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  width: var(--card-w);
+  height: var(--card-h);
+  padding: 0;
+  border: 0;
+  margin: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--suit);
+  border-radius: var(--card-radius);
+  box-shadow: var(--shadow-card);
+  z-index: var(--z-card);
+  /* A shallow perspective makes the flip read as a card turning over rather
+     than a rectangle scaling; too much and the far edge fisheyes. */
+  perspective: calc(var(--card-w) * 11);
+  transition:
+    transform var(--t-base) var(--ease-card),
+    box-shadow var(--t-base) var(--ease),
+    filter var(--t-fast) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.card[data-suit='S'] { --suit: var(--suit-s); }
+.card[data-suit='H'] { --suit: var(--suit-h); }
+.card[data-suit='D'] { --suit: var(--suit-d); }
+.card[data-suit='C'] { --suit: var(--suit-c); }
+
+.card--interactive {
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.card__inner {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform var(--t-flip) var(--ease-card);
+}
+
+.card--face-down .card__inner {
+  transform: rotateY(180deg);
+}
+
+.card__face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--card-radius);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card__face--front {
+  /* Warm off-white with the edges falling away a touch: a flat fill reads as
+     paper stock only when it has somewhere to go. */
+  background:
+    radial-gradient(135% 105% at 50% 2%,
+      var(--card-face) 68%,
+      var(--card-face-edge) 100%);
+  box-shadow: inset 0 0 0 var(--hairline) var(--card-face-edge);
+}
+
+.card__face--back {
+  transform: rotateY(180deg);
+}
+
+/* Suit colour is re-asserted on every inked element rather than left to
+   inherit down from .card. The indices and pips are spans, and a single loose
+   page-level rule like `.hand span { color: ... }` would otherwise repaint the
+   whole deck. */
+.card__index,
+.card__rank,
+.card__pip,
+.card__court,
+.card__court-letter,
+.card__glyph {
+  color: var(--suit);
+}
+
+.card__glyph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* All four symbols share a 0 0 100 100 viewBox and SVG's default
+     xMidYMid meet fit, so one square pip box renders spade, heart, diamond and
+     club at one consistent optical weight. */
+  fill: currentColor;
+}
+
+/* ===========================================================================
+   2. Corner indices
+   =========================================================================== */
+
+.card__index {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: var(--index-w);
+  line-height: 1;
+}
+
+.card__index--tl {
+  top: var(--index-y);
+  left: var(--index-x);
+}
+
+/* Bottom-right is the top-left rotated a half turn, exactly as printed. */
+.card__index--br {
+  right: var(--index-x);
+  bottom: var(--index-y);
+  transform: rotate(180deg);
+}
+
+.card__rank {
+  font-family: var(--font-serif);
+  font-size: var(--index-rank);
+  font-weight: 700;
+  line-height: 0.92;
+  letter-spacing: calc(var(--card-w) * -0.006);
+  font-variant-numeric: lining-nums;
+}
+
+/* '10' is the only two-glyph index; shrinking it keeps every corner block the
+   same width, which is what stops a hand of tens looking mis-set. */
+.card__rank--wide {
+  font-size: calc(var(--card-w) * 0.165);
+  letter-spacing: calc(var(--card-w) * -0.008);
+}
+
+.card__index-pip {
+  width: var(--index-pip);
+  height: var(--index-pip);
+  margin-top: calc(var(--card-h) * 0.012);
+}
+
+/* ===========================================================================
+   3. Centre pips — the classical 3 x 13 field
+   =========================================================================== */
+
+.card__pips {
+  position: absolute;
+  inset: var(--pip-field-y) var(--pip-field-x);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(13, 1fr);
+}
+
+/* Each grid cell is only 1/13th of the field, so a pip is centred on its cell
+   and allowed to overflow it. The cell is an anchor point, not a container. */
+.card__pip {
+  display: block;
+  place-self: center;
+  width: var(--pip);
+  height: var(--pip);
+}
+
+.card__pip--ace {
+  width: var(--pip-ace);
+  height: var(--pip-ace);
+}
+
+.card__pip--c1 { grid-column: 1; }
+.card__pip--c2 { grid-column: 2; }
+.card__pip--c3 { grid-column: 3; }
+
+.card__pip--r1  { grid-row: 1; }
+.card__pip--r2  { grid-row: 2; }
+.card__pip--r3  { grid-row: 3; }
+.card__pip--r4  { grid-row: 4; }
+.card__pip--r5  { grid-row: 5; }
+.card__pip--r6  { grid-row: 6; }
+.card__pip--r7  { grid-row: 7; }
+.card__pip--r8  { grid-row: 8; }
+.card__pip--r9  { grid-row: 9; }
+.card__pip--r10 { grid-row: 10; }
+.card__pip--r11 { grid-row: 11; }
+.card__pip--r12 { grid-row: 12; }
+.card__pip--r13 { grid-row: 13; }
+
+/* Below the waist every pip is upside down, as on a real card. */
+.card__pip--r8,
+.card__pip--r9,
+.card__pip--r10,
+.card__pip--r11,
+.card__pip--r12,
+.card__pip--r13 {
+  transform: rotate(180deg);
+}
+
+/* ===========================================================================
+   4. Court cards — J, Q, K
+   ---------------------------------------------------------------------------
+   No illustrated figures. A tall panel flanked by the index margins, a double
+   rule with corner fleurons, the suit above and below, and one big serif
+   letter. It is the treatment a plain-back deck would actually use, so it
+   reads as a decision rather than as art that failed to load.
+   =========================================================================== */
+
+/* J, Q and K are the only courts, so the panel only has to clear a one-glyph
+   index — which is why it can run taller and wider than the pip field does. */
+.card__court {
+  position: absolute;
+  inset: calc(var(--card-h) * 0.075) calc(var(--card-w) * 0.248);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(var(--card-h) * 0.038) 0;
+}
+
+.card__court-rule {
+  position: absolute;
+  border: var(--hairline) solid currentColor;
+  pointer-events: none;
+}
+
+.card__court-rule--outer {
+  inset: 0;
+  border-radius: calc(var(--card-radius) * 0.5);
+  opacity: 0.55;
+}
+
+.card__court-rule--inner {
+  inset: calc(var(--card-w) * 0.035);
+  opacity: 0.3;
+}
+
+/* Lozenges centred on the inner rule's four corners, so the rule appears to
+   pass through them. Rotated squares rather than glyphs — a real ornament
+   would turn to mush at 52px. Offset = inner inset minus half the side. */
+.card__court-fleur {
+  --fleur: calc(var(--card-w) * 0.042);
+  position: absolute;
+  width: var(--fleur);
+  height: var(--fleur);
+  background: currentColor;
+  opacity: 0.4;
+  transform: rotate(45deg);
+}
+
+.card__court-fleur--tl,
+.card__court-fleur--tr { top: calc(var(--card-w) * 0.014); }
+
+.card__court-fleur--bl,
+.card__court-fleur--br { bottom: calc(var(--card-w) * 0.014); }
+
+.card__court-fleur--tl,
+.card__court-fleur--bl { left: calc(var(--card-w) * 0.014); }
+
+.card__court-fleur--tr,
+.card__court-fleur--br { right: calc(var(--card-w) * 0.014); }
+
+.card__court-pip {
+  width: calc(var(--card-w) * 0.16);
+  height: calc(var(--card-w) * 0.16);
+  flex: 0 0 auto;
+}
+
+.card__court-pip--bottom {
+  transform: rotate(180deg);
+}
+
+.card__court-letter {
+  font-family: var(--font-serif);
+  font-size: calc(var(--card-w) * 0.43);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: calc(var(--card-w) * -0.012);
+  /* Optical centring: serif caps sit high in their em box. */
+  margin-top: calc(var(--card-h) * -0.01);
+}
+
+/* ===========================================================================
+   5. The back — a woven cross-hatch inside an ivory margin
+   =========================================================================== */
+
+.card__face--back {
+  --back: var(--card-back-red);
+  --back-dark: var(--card-back-red-dark);
+  --weave-step: calc(var(--card-w) * 0.115);
+  --weave-line: calc(var(--card-w) * 0.042);
+  --weave-half: calc(var(--card-w) * 0.0575);
+  background: var(--card-back-ivory);
+  box-shadow: inset 0 0 0 var(--hairline) var(--card-face-edge);
+}
+
+.card[data-back='blue'] .card__face--back {
+  --back: var(--card-back-blue);
+  --back-dark: var(--card-back-blue-dark);
+}
+
+.card__back-field {
+  position: absolute;
+  inset: calc(var(--card-w) * 0.055);
+  overflow: hidden;
+  border-radius: calc(var(--card-radius) * 0.55);
+  background-color: var(--back);
+  /* Two dark diagonal families cross into a lattice; the crossings double up
+     and go darker on their own, which is what gives the weave its knots. */
+  background-image:
+    repeating-linear-gradient(45deg,
+      var(--back-dark) 0 var(--weave-line),
+      transparent var(--weave-line) var(--weave-step)),
+    repeating-linear-gradient(-45deg,
+      var(--back-dark) 0 var(--weave-line),
+      transparent var(--weave-line) var(--weave-step));
+  box-shadow: inset 0 0 0 var(--hairline) var(--back-dark);
+}
+
+/* The ivory threads run a half-step out of phase with the dark ones so each
+   crossing reads as over-and-under rather than as a flat grid. */
+.card__back-field::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.3;
+  background-image:
+    repeating-linear-gradient(45deg,
+      transparent 0 var(--weave-half),
+      var(--card-back-ivory) var(--weave-half)
+        calc(var(--weave-half) + var(--weave-line) * 0.45),
+      transparent calc(var(--weave-half) + var(--weave-line) * 0.45) var(--weave-step)),
+    repeating-linear-gradient(-45deg,
+      transparent 0 var(--weave-half),
+      var(--card-back-ivory) var(--weave-half)
+        calc(var(--weave-half) + var(--weave-line) * 0.45),
+      transparent calc(var(--weave-half) + var(--weave-line) * 0.45) var(--weave-step));
+}
+
+/* Corner falloff, so the back sits in the light the same way the face does. */
+.card__back-field::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background: radial-gradient(120% 92% at 50% 40%,
+    transparent 38%,
+    var(--back-dark) 118%);
+}
+
+/* ===========================================================================
+   6. States
+   ---------------------------------------------------------------------------
+   Every state carries a non-colour cue as well: selected rises, highlighted
+   grows a ring and lifts, disabled gets a hatch. Colour is never the only
+   channel.
+   =========================================================================== */
+
+.card--interactive:hover:not(.card--disabled) {
+  transform: translateY(calc(var(--card-lift) * -0.32));
+}
+
+.card--interactive:focus-visible {
+  outline: var(--ring) solid var(--focus);
+  outline-offset: calc(var(--card-w) * 0.035);
+}
+
+.card--selected {
+  transform: translateY(calc(var(--card-lift) * -1));
+  box-shadow: var(--shadow-card-raised);
+  z-index: var(--z-card-moving);
+}
+
+.card--interactive.card--selected:hover {
+  transform: translateY(calc(var(--card-lift) * -1.12));
+}
+
+/* A solid ring plus a soft bloom, and a small lift. The ring is the part that
+   survives greyscale and a colourblind viewer; the bloom is the part that
+   feels like scoring.
+
+   The bloom animates box-shadow rather than transform, because .card carries
+   the lift and .card__inner carries the flip and neither can be clobbered. It
+   runs once rather than looping: the speed setting can drive --anim-scale to
+   nearly zero, and a looping animation at that duration burns a core. With
+   only a `from` keyframe the end state is the declaration below. */
+.card--highlighted {
+  z-index: var(--z-card-moving);
+  box-shadow:
+    0 0 0 var(--ring) var(--glow),
+    0 0 calc(var(--card-w) * 0.42) var(--glow-soft),
+    var(--shadow-card-raised);
+  transform: translateY(calc(var(--card-lift) * -0.28));
+  animation: card-glow-in var(--t-slow) var(--ease-card) 1;
+}
+
+.card--selected.card--highlighted {
+  transform: translateY(calc(var(--card-lift) * -1));
+}
+
+@keyframes card-glow-in {
+  from {
+    box-shadow:
+      0 0 0 0 var(--glow),
+      0 0 0 var(--glow-soft),
+      var(--shadow-card);
+  }
+}
+
+.card--disabled {
+  cursor: not-allowed;
+  /* Desaturated and knocked back, but never translucent: the felt showing
+     through a card tints the paper green and it stops reading as a card. */
+  filter: saturate(0.38) brightness(0.95);
+  box-shadow: var(--shadow-card);
+}
+
+/* Hatched veil, so an unplayable card is legible as unplayable in greyscale
+   and at a glance rather than by being "the dim red one". */
+.card--disabled::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: var(--card-radius);
+  opacity: 0.13;
+  background: repeating-linear-gradient(-45deg,
+    transparent 0 calc(var(--card-w) * 0.026),
+    var(--card-ink) calc(var(--card-w) * 0.026) calc(var(--card-w) * 0.036));
+}
+
+/* ===========================================================================
+   7. Reduced motion
+   ---------------------------------------------------------------------------
+   theme.css already collapses --anim-scale, which handles every transition
+   here. The one thing a near-zero duration cannot make safe is a keyframe
+   animation, so that is all this removes — the glow still appears, it just
+   appears at once.
+   =========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .card--highlighted {
+    animation: none;
+  }
+}
+
+/* The symbol sheet is inert; JS also sets this inline so it holds even if this
+   stylesheet has not landed yet. */
+#cribbage-suit-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}

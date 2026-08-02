@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cribbage</title>
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="A game of cribbage against the computer.">
+
+<!-- theme.css first: everything downstream reads its tokens.
+     layout.css last: it caps the board's height in the rail and replaces its
+     width in the compact band, and both rules have to beat board.css. -->
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/cards.css">
+<link rel="stylesheet" href="css/board.css">
+<link rel="stylesheet" href="css/layout.css">
+</head>
+<body>
+
+<h1 class="visually-hidden">Cribbage</h1>
+<div id="game-root"></div>
+
+<!-- Dependency order. Nothing here is a module and nothing is deferred, so the
+     order of these tags IS the dependency graph:
+       cards.js      values, no dependencies
+       scoring.js    needs cards.js
+       engine.js     needs cards.js + scoring.js
+       render-*.js   DOM builders, no dependency on the engine
+       render.js     needs render-cards.js + render-board.js -->
+<script src="js/cards.js"></script>
+<script src="js/scoring.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/render-cards.js"></script>
+<script src="js/render-board.js"></script>
+<script src="js/render.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // ==========================================================================
+  // PHASE 3 — VISUALS ONLY.
+  //
+  // The game is not wired to input yet. Input handling arrives in Phase 5 and
+  // all motion arrives in Phase 4. What this script does is deal a real hand
+  // from the real Cribbage.Engine with a fixed seed, play it forward a few
+  // beats, and hand the resulting snapshot to Cribbage.Render — so the screen
+  // below is genuinely what the render layer does with real engine state, at
+  // real card counts, rather than hand-written markup pretending to be a game.
+  //
+  // The single live behaviour is a selection toggle on your own cards. It sets
+  // no game state and decides nothing; it exists so the raised card, the focus
+  // ring and the keyboard path can be judged now rather than in Phase 5.
+  //
+  // ?at=deal | discard | play | count stops the demo at a different moment, so
+  // the layout can be checked at every card count the game actually produces:
+  // six-card hands at `discard`, four-card hands at `count`, and a pile with a
+  // spent series plus a live one at `play`.
+  // ==========================================================================
+
+  var STOPS = { deal: 1, discard: 1, play: 1, count: 1 };
+  var SEED = 332;
+  var START_SCORES = [41, 46];
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Deliberately dumb: lay away the two highest cards. This is a fixture, not a
+  // player — the actual discard strategy is Phase 5's problem.
+  function layAway(game) {
+    while (game.getState().phase === 'DISCARD' && game.pendingActor() !== null) {
+      var hand = game.getState().hands[game.pendingActor()].slice();
+      hand.sort(function (a, b) { return b.rank - a.rank; });
+      game.apply({ type: 'discard', cards: [hand[0], hand[1]] });
+    }
+  }
+
+  function step(game) {
+    if (game.pendingActor() !== null) {
+      var actions = game.legalActions();
+      game.apply(actions[actions.length - 1]);
+    } else {
+      game.advance();
+    }
+  }
+
+  function buildPosition(stopAt) {
+    var game = Cribbage.Engine.createGame({
+      targetScore: 121,
+      dealer: 0,
+      rng: mulberry32(SEED),
+      scores: START_SCORES
+    });
+
+    // Hand one is played right through. It is not shown; it is here so both
+    // players have pegged and counted, which is what puts the two pegs of each
+    // pair in different holes. Starting a game at 41–46 with untouched pegs
+    // would stack them, and the board would look broken for the wrong reason.
+    game.advance();
+    layAway(game);
+    var guard = 0;
+    while (game.getState().phase !== 'DEAL' && !game.isOver() && guard++ < 400) step(game);
+
+    // Hand two is the one on screen.
+    game.advance();                       // DEAL -> DISCARD, six cards each
+    if (stopAt === 'deal' || stopAt === 'discard') return game;
+
+    layAway(game);
+    game.advance();                       // CUT_STARTER -> PLAY
+    for (var i = 0; i < 5 && !game.isOver(); i++) step(game);
+    if (stopAt === 'play') return game;
+
+    guard = 0;
+    while (game.getState().phase !== 'SHOW_PONE' && !game.isOver() && guard++ < 60) step(game);
+    game.advance();                       // emit showStart, so the hands are up
+    return game;
+  }
+
+  var query = String(window.location.search || '');
+  var match = query.match(/[?&]at=([a-z]+)/);
+  var stopAt = (match && STOPS[match[1]]) ? match[1] : 'play';
+
+  var game = buildPosition(stopAt);
+  var view = Cribbage.Render.mount(document.getElementById('game-root'), {
+    me: 0,
+    labels: ['You', 'Opponent'],
+    targetScore: 121
+  });
+
+  var selected = [];
+
+  function paint() {
+    var state = game.getState();
+    var hints = { selected: selected.slice(), playable: null };
+    // The only thing the snapshot cannot say is which cards are legal, so the
+    // caller supplies it. render.js never works it out for itself.
+    if (state.phase === 'PLAY' && state.toMove === 0 && !game.isOver()) {
+      hints.playable = game.legalActions().map(function (a) { return a.card.id; });
+    }
+    view.renderState(state, hints);
+  }
+
+  paint();
+
+  // Visual stub only — see the note at the top of this script.
+  var limit = game.getState().phase === 'DISCARD' ? 2 : 1;
+  view.el.hands[0].addEventListener('click', function (event) {
+    var card = event.target.closest ? event.target.closest('.card') : null;
+    if (!card || !card.hasAttribute('data-card-id')) return;
+    var id = Number(card.getAttribute('data-card-id'));
+    var at = selected.indexOf(id);
+    if (at === -1) {
+      selected.push(id);
+      while (selected.length > limit) selected.shift();
+    } else {
+      selected.splice(at, 1);
+    }
+    paint();
+  });
+
+  // Handy from the console while iterating on the visuals.
+  window.cribbageDemo = { game: game, view: view, repaint: paint };
+})();
+</script>
+
+</body>
+</html>

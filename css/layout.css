@@ -1,0 +1,1066 @@
+/* ---------------------------------------------------------------------------
+   layout.css — the game screen.
+
+   This file composes two finished components it does not own: the cards
+   (cards.css / render-cards.js) and the board (board.css / render-board.js).
+   Nothing here reaches inside a .card. The only board internals touched are the
+   two chrome elements the compact board has to shed, and that is called out
+   where it happens.
+
+   Every colour, shadow, radius, duration and easing comes from theme.css. The
+   only new declarations at :root are the type scale, which theme.css does not
+   provide and which the styleguide needs by name — see the note below.
+
+   LOAD ORDER: this file must come after board.css, because the desktop rail
+   caps .crib-board's height and the compact rail replaces its width outright.
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* Candidate for promotion into theme.css.
+     theme.css fixes the two font families but no sizes, so every consumer was
+     about to invent its own. A 1.28 ratio: small enough that adjacent steps
+     still read as a hierarchy, wide enough that the numerals carry. */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-md: 15px;
+  --text-lg: 19px;
+  --text-xl: 25px;
+  --text-2xl: 33px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* [hidden] is a presentation hint with almost no specificity, so any layout
+   rule setting `display` silently defeats it. Everything render.js hides is
+   hidden by this attribute, so it has to actually win. */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  /* The felt sits in a dark surround, so the table reads as an object on a
+     surface rather than as a page that happens to be green. */
+  background-color: var(--wood-edge);
+  /* Belt and braces on the no-horizontal-scroll rule: the layout is built not
+     to overflow, and this guarantees it cannot at any width. */
+  overflow-x: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  color: var(--on-felt);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ===========================================================================
+   1. The table
+   =========================================================================== */
+
+.app {
+  --notes-w: clamp(158px, 15vw, 214px);
+  /* Depth of the laid-over board. render-board.js fixes the track's LENGTH at
+     roughly 70 x --hole-size whatever it is given, so this only sets how deep
+     the plank is — and a real horizontal board is nearer 3:1 than 2:1. */
+  --band-h: clamp(142px, 18vw, 180px);
+  --lane-max: 980px;
+
+  display: block;
+  min-height: 100%;
+  padding: var(--sp-3);
+}
+
+/* Baize: a broad sheen from the top-left, a fall-off into the near corner, and
+   the vignette from theme.css to pull the eye into the middle of the table. */
+.table {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  /* The game column is capped rather than left to sprawl: a hand and a pile are
+     both only a few cards wide, and stretching the nameplates to 1200px puts a
+     player's name and their score at opposite ends of the table. */
+  grid-template-columns: minmax(0, var(--lane-max)) auto;
+  justify-content: center;
+  gap: var(--sp-4);
+  min-height: calc(100vh - var(--sp-5));
+  padding: var(--sp-4);
+  border-radius: var(--radius-lg);
+
+  background-color: var(--felt);
+  background-image:
+    radial-gradient(ellipse 120% 85% at 32% 4%, var(--felt-light), transparent 62%),
+    radial-gradient(ellipse 95% 75% at 90% 100%, var(--felt-dark), transparent 64%),
+    linear-gradient(172deg, var(--felt) 0%, var(--felt-dark) 78%, var(--felt-edge) 100%);
+
+  /* An arris of light along the top edge and a dark one along the bottom, so
+     the felt looks stretched over something rather than painted on. */
+  box-shadow:
+    inset 0 1px 0 var(--felt-light),
+    inset 0 -2px 0 var(--felt-edge),
+    var(--shadow-inset-felt),
+    var(--shadow-panel);
+}
+
+/* Baize has a fine random nap. Turbulence rather than a repeating gradient:
+   any tiled pattern gives away its period across a table this wide. */
+.table__nap {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-felt);
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  mix-blend-mode: overlay;
+  opacity: 0.09;
+  pointer-events: none;
+}
+
+/* ===========================================================================
+   2. The game column
+   ---------------------------------------------------------------------------
+   Five stacked rows exactly as the layout diagram reads, plus a full-height
+   notes column on the right for the score breakdown and the hand history.
+   The play row is the only one that flexes, so the two hands never move as
+   the pile grows.
+   =========================================================================== */
+
+.game {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--notes-w);
+  grid-template-rows: auto auto minmax(min-content, 1fr) auto auto;
+  grid-template-areas:
+    'opponent notes'
+    'supply   notes'
+    'play     notes'
+    'status   notes'
+    'player   notes';
+  gap: var(--sp-3) var(--sp-4);
+  min-width: 0;
+  max-width: var(--lane-max);
+  z-index: var(--z-pile);
+}
+
+.seat--opponent { grid-area: opponent; }
+.supply { grid-area: supply; }
+.play { grid-area: play; }
+.status { grid-area: status; }
+.seat--player { grid-area: player; }
+.notes { grid-area: notes; }
+
+/* ===========================================================================
+   3. Seats
+   =========================================================================== */
+
+.seat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* The player's own row is the mirror of the opponent's: cards first, then the
+   nameplate, so both nameplates sit against the middle of the table. */
+.seat--player {
+  flex-direction: column-reverse;
+}
+
+.seat__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+/* The same brass/pewter pairing the pegs use, so a name, a score numeral and a
+   peg on the board are obviously the same player. Never the only cue: the name
+   is always spelled out beside it. */
+.seat__pip {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 -1px 1px var(--hole-shadow), 0 1px 2px var(--felt-edge);
+}
+
+.seat[data-peg='brass'] .seat__pip {
+  background-image: radial-gradient(circle at 35% 28%,
+    var(--brass-light), var(--brass) 55%, var(--brass-deep));
+}
+
+.seat[data-peg='pewter'] .seat__pip {
+  background-image: radial-gradient(circle at 35% 28%,
+    var(--pewter-light), var(--pewter) 55%, var(--pewter-deep));
+}
+
+.seat__name {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-felt);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Whose crib it is changes the correct discard, so the dealer marker is a word
+   on a brass tag rather than a coloured dot. */
+.seat__badge {
+  flex: 0 0 auto;
+  padding: 2px var(--sp-2);
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--wood-edge);
+  background-image: linear-gradient(180deg, var(--brass-light), var(--brass));
+  box-shadow: 0 1px 2px var(--felt-edge);
+}
+
+.seat__score {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  font-family: var(--font-num);
+}
+
+.seat__score-num {
+  font-size: var(--text-xl);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-felt);
+  text-shadow: 0 1px 0 var(--felt-edge);
+}
+
+.seat__score-of {
+  font-size: var(--text-sm);
+  color: var(--on-felt-soft);
+}
+
+/* --- Hands ---------------------------------------------------------------- */
+
+.hand {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  min-height: calc(var(--card-w) * 1.4);
+  min-width: 0;
+}
+
+/* Headroom for the selection lift and the focus ring, which both leave the
+   card's own box. Without it the raised card is clipped by the grid row. */
+.hand--player {
+  padding-top: calc(var(--card-w) * 0.34);
+}
+
+.hand--opponent {
+  align-items: flex-start;
+  padding-bottom: calc(var(--card-w) * 0.1);
+}
+
+/* ===========================================================================
+   4. Supply row — deck, starter, crib
+   =========================================================================== */
+
+.supply {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.slot__label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--on-felt-soft);
+  white-space: nowrap;
+}
+
+.slot__body {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  min-height: calc(var(--card-w) * 1.4);
+}
+
+.slot__note {
+  font-size: var(--text-xs);
+  color: var(--on-felt-soft);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* An empty slot is a shallow well pressed into the felt, not a dashed outline:
+   the table has a place for the card whether or not the card is there yet. */
+.well {
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4);
+  border-radius: var(--card-radius);
+  background-image: linear-gradient(176deg, var(--felt-dark), var(--felt-edge));
+  box-shadow:
+    inset 0 2px 5px var(--felt-edge),
+    inset 0 -1px 0 var(--felt-light);
+  opacity: 0.75;
+}
+
+/* The deck is a stack: four backs offset by a hair each, so it has a visible
+   thickness. Only the top one is a real card element; the rest are shims. */
+.deck {
+  position: relative;
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4);
+}
+
+.deck > * {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.deck__shim {
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4);
+  border-radius: var(--card-radius);
+  background-image: linear-gradient(180deg, var(--card-back-ivory), var(--card-face-edge));
+  box-shadow: 0 1px 1px var(--felt-edge);
+}
+
+/* The crib is a squared-up pile with just enough spread to count the cards. */
+.crib-pile {
+  position: relative;
+  width: calc(var(--card-w) + var(--sp-5));
+  height: calc(var(--card-w) * 1.4);
+}
+
+.crib-pile > .card {
+  position: absolute;
+  top: 0;
+}
+
+.crib-pile > .card:nth-child(1) { left: 0; }
+.crib-pile > .card:nth-child(2) { left: var(--sp-2); }
+.crib-pile > .card:nth-child(3) { left: var(--sp-4); }
+.crib-pile > .card:nth-child(4) { left: var(--sp-5); }
+
+/* ===========================================================================
+   5. Play area
+   =========================================================================== */
+
+/* The middle of the table is mostly empty for most of a hand, so it is given a
+   shape of its own: a shallow routed field in the felt, the way the middle of a
+   real board wears. Without it the emptiness reads as a layout that failed. */
+.play {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  align-self: center;
+  gap: var(--sp-4);
+  min-width: 0;
+  width: 100%;
+  min-height: calc(var(--card-w) * 2.35);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-lg);
+  background-image:
+    radial-gradient(ellipse 70% 130% at 26% 50%, var(--felt-dark), transparent 72%);
+  box-shadow:
+    inset 0 0 0 1px var(--felt-edge),
+    inset 0 2px 6px -2px var(--felt-edge);
+}
+
+.play__lane {
+  min-width: 0;
+}
+
+.pile {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.pile__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: 0 0 auto;
+}
+
+/* Who played a card is carried by where it lies — theirs pushed toward their
+   side of the table, mine toward mine — and repeated by a peg-coloured pip on
+   the outer edge, so it survives greyscale and a colourblind viewer. */
+/* The offset is deliberately small. Ownership only has to be glanceable — the
+   thing the player actually reads here is the ORDER, because runs and pairs
+   depend on it, and a tall stagger turns a sequence into a staircase you have
+   to decode. A nudge plus the peg-coloured pip carries the owner; the row
+   carries the sequence. */
+.pile__item[data-side='theirs'] {
+  flex-direction: column;
+  margin-bottom: var(--sp-4);
+}
+
+.pile__item[data-side='mine'] {
+  flex-direction: column-reverse;
+  margin-top: var(--sp-4);
+}
+
+.pile__owner {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: inset 0 -1px 1px var(--hole-shadow), 0 1px 2px var(--felt-edge);
+}
+
+.pile__item[data-peg='brass'] .pile__owner {
+  background-image: radial-gradient(circle at 35% 28%,
+    var(--brass-light), var(--brass) 55%, var(--brass-deep));
+}
+
+.pile__item[data-peg='pewter'] .pile__owner {
+  background-image: radial-gradient(circle at 35% 28%,
+    var(--pewter-light), var(--pewter) 55%, var(--pewter-deep));
+}
+
+/* Series already counted and reset fall back and tuck under each other, so the
+   live series is always the one at full strength on the right.
+
+   Knocked back with a filter, never with opacity: a translucent card lets the
+   felt through and the paper turns green, which is the one thing that stops a
+   card reading as a card. The filter does not flatten the flip's preserve-3d
+   subtree — cards.css relies on the same fact for .card--disabled. */
+/* Brightness only, no desaturation. Taking the saturation out of a cream card
+   turns it silver, which reads as "greyed out" rather than as "further back";
+   dimming alone reads as a card lying in the shade of the live ones. */
+.pile__item[data-spent='true'] .card {
+  filter: brightness(0.78);
+  box-shadow: var(--shadow-card);
+}
+
+.pile__item[data-spent='true'] .pile__owner {
+  opacity: 0.55;
+}
+
+/* Spent cards tuck only when the pile is actually short of room. A full play is
+   eight cards, which fits a desktop play area at full width, and tucking them
+   there just collides the corners against the owner offset above without
+   buying anything. The narrow-width rules further down turn the tuck back on,
+   where it is genuinely needed. */
+@media (max-width: 1240px) {
+  .pile__item[data-spent='true'] + .pile__item[data-spent='true'] {
+    margin-left: calc(var(--card-overlap) * -1);
+  }
+}
+
+/* A hairline groove where one series ends and the next begins. */
+.pile__item[data-series-start='true']:not(:first-child) {
+  margin-left: var(--sp-5);
+}
+
+.pile__item[data-series-start='true']:not(:first-child)::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--sp-2) * -1);
+  top: 8%;
+  bottom: 8%;
+  width: 1px;
+  background-image: linear-gradient(180deg,
+    transparent, var(--felt-edge) 22%, var(--felt-edge) 78%, transparent);
+}
+
+.pile__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-style: italic;
+  color: var(--on-felt-soft);
+}
+
+/* The running count is the single most-consulted number during the play, so it
+   gets the same brass-on-oak plate the status line uses. */
+.count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: calc(var(--card-w) * 1.15);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius);
+  background-image: linear-gradient(180deg, var(--wood-dark), var(--wood-deep));
+  box-shadow:
+    inset 0 1px 0 var(--wood-light),
+    inset 0 0 0 1px var(--wood-edge),
+    var(--shadow-panel);
+}
+
+.count__label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--on-wood);
+  opacity: 0.72;
+}
+
+.count__num {
+  font-family: var(--font-num);
+  font-size: var(--text-2xl);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-wood);
+  text-shadow: 0 1px 0 var(--wood-edge), 0 2px 4px var(--hole-shadow);
+}
+
+/* 31 is the ceiling; the plate lights up so it does not have to be read. The
+   ring is the cue that survives colourblindness, not the hue. */
+.count[data-full='true'] {
+  box-shadow:
+    inset 0 0 0 2px var(--glow),
+    inset 0 1px 0 var(--wood-light),
+    0 0 18px var(--glow-soft),
+    var(--shadow-panel);
+}
+
+/* ===========================================================================
+   6. Status line
+   ---------------------------------------------------------------------------
+   The one sentence that always says what is expected right now. A brass-edged
+   oak plate: it belongs to the board, not to the felt, which is what makes it
+   read as the game speaking rather than as a caption.
+   =========================================================================== */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 46px;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius);
+  background-image: linear-gradient(180deg, var(--wood-dark), var(--wood-deep));
+  box-shadow:
+    inset 0 1px 0 var(--wood-light),
+    inset 0 -1px 0 var(--wood-edge),
+    inset 0 0 0 1px var(--wood-edge),
+    var(--shadow-panel);
+}
+
+.status__mark {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-image: radial-gradient(circle at 35% 30%,
+    var(--brass-light), var(--brass-dark) 70%);
+  box-shadow: 0 0 0 3px var(--wood-edge);
+  opacity: 0.5;
+}
+
+.status__text {
+  margin: 0;
+  font-size: var(--text-md);
+  line-height: 1.35;
+  color: var(--on-wood);
+  text-shadow: 0 1px 0 var(--wood-edge);
+}
+
+/* Waiting on the player: the mark lights. The sentence itself already says so,
+   so this is reinforcement, never the message. */
+.status[data-turn='mine'] .status__mark {
+  opacity: 1;
+  box-shadow: 0 0 0 3px var(--wood-edge), 0 0 12px var(--glow-soft);
+}
+
+.status[data-turn='mine'] .status__text {
+  font-weight: 600;
+  color: var(--glow);
+}
+
+/* ===========================================================================
+   7. Notes column — score breakdown and hand history
+   ---------------------------------------------------------------------------
+   Both are built and styled here and left empty on purpose: Phase 4 fills the
+   breakdown during the count and appends to the history as hands finish.
+   =========================================================================== */
+
+/* The breakdown sizes to whatever the count has put in it and the history takes
+   the rest, so an empty breakdown is a small note rather than a large hole. */
+.notes {
+  display: grid;
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+  gap: var(--sp-3);
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel--breakdown .panel__body {
+  max-height: 42vh;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background-image: linear-gradient(180deg, var(--felt-dark), var(--felt-edge));
+  box-shadow:
+    inset 0 1px 0 var(--felt-light),
+    inset 0 0 0 1px var(--felt-edge),
+    var(--shadow-panel);
+  z-index: var(--z-panel);
+}
+
+.panel__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--on-felt);
+  background-color: transparent;
+  background-image: linear-gradient(180deg, var(--felt), var(--felt-dark));
+  box-shadow: inset 0 -1px 0 var(--felt-edge);
+  transition: background-color var(--t-fast) var(--ease);
+}
+
+.panel__toggle:hover {
+  background-image: linear-gradient(180deg, var(--felt-light), var(--felt));
+}
+
+.panel__toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* A rotating caret rather than two glyphs, so the control never depends on an
+   icon font or an image. */
+.panel__caret {
+  margin-left: auto;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--on-felt-soft);
+  border-bottom: 2px solid var(--on-felt-soft);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.panel[data-open='false'] .panel__caret {
+  transform: rotate(-45deg) translate(-1px, 1px);
+}
+
+.panel[data-open='false'] .panel__body {
+  display: none;
+}
+
+.panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  overscroll-behavior: contain;
+}
+
+.panel__empty {
+  font-size: var(--text-sm);
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--on-felt-soft);
+}
+
+/* Phase 4 appends to these; the styling is here so it lands finished. */
+.tally {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.tally__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0;
+  box-shadow: inset 0 -1px 0 var(--felt-dark);
+}
+
+.tally__row:last-child {
+  box-shadow: none;
+}
+
+.tally__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--on-felt);
+}
+
+.tally__points {
+  flex: 0 0 auto;
+  font-family: var(--font-num);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+  color: var(--glow);
+}
+
+.tally__row[data-total='true'] {
+  margin-top: var(--sp-1);
+  padding-top: var(--sp-2);
+  box-shadow: inset 0 1px 0 var(--felt-light);
+  font-weight: 700;
+}
+
+.log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.log__row {
+  padding: var(--sp-1) 0;
+  line-height: 1.45;
+  color: var(--on-felt-soft);
+  box-shadow: inset 0 -1px 0 var(--felt-dark);
+}
+
+.log__row:last-child {
+  box-shadow: none;
+}
+
+.log__who {
+  font-weight: 600;
+  color: var(--on-felt);
+}
+
+.log__points {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--glow);
+}
+
+/* ===========================================================================
+   8. The board rail
+   ---------------------------------------------------------------------------
+   Desktop: a full-height right rail, always in view.
+
+   The height cap is the one piece of arithmetic here. render-board.js lays the
+   track out at a natural height of roughly 70 x --hole-size (the whole walk is
+   206 x --hole-size long, folded into three legs), then centres it in whatever
+   height it is given. Without a cap, a tall viewport leaves the track floating
+   in a field of bare oak. 74 x --hole-size plus the score plate and legend is
+   the natural size plus a comfortable margin, and because it is expressed in
+   --hole-size it tracks the token instead of freezing at one viewport.
+   =========================================================================== */
+
+.rail {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+
+.rail__mount {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--board-rail-w);
+  height: 100%;
+}
+
+.rail__mount > .crib-board {
+  height: min(100%, calc(var(--hole-size) * 74 + 120px));
+}
+
+/* ===========================================================================
+   9. Responsive
+   ---------------------------------------------------------------------------
+   Desktop-first. Two breakpoints, matching the brief.
+   =========================================================================== */
+
+/* --- < 1024px: the board becomes a horizontal track across the top --------- */
+@media (max-width: 1023.98px) {
+  .table {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .game {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+      'opponent'
+      'supply'
+      'play'
+      'status'
+      'player'
+      'notes';
+    max-width: none;
+  }
+
+  .notes {
+    grid-template-rows: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 42vh;
+  }
+
+  /* The rail moves to the top and the board turns a quarter turn onto its
+     side. It is the same vertical serpentine, laid over — which is exactly what
+     a horizontal cribbage board is — so render-board.js keeps working
+     unchanged, and holePosition() keeps returning coordinates in the board's
+     own space, which is all the animation layer needs.
+
+     --band-w is written by render.js: the rotated board's HEIGHT has to equal
+     the mount's WIDTH, and CSS cannot read one axis of a parent into the other. */
+  .rail {
+    order: -1;
+  }
+
+  .rail__mount {
+    width: 100%;
+    height: var(--band-h);
+    overflow: hidden;
+  }
+
+  .rail__mount > .crib-board {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--band-h);
+    /* board.css floors the board at 320px on its long axis, which is right for a
+       vertical rail and wrong here: laid over, the long axis is the band's WIDTH,
+       and on a phone narrower than about 344px the floor would push the ends of
+       the track off screen. The board would rather be small than clipped. */
+    min-height: 0;
+    height: min(var(--band-w, 480px), calc(var(--hole-size) * 74 + 40px));
+    transform-origin: 50% 50%;
+    /* Anticlockwise, so the end of the track — the game hole — finishes on the
+       right, the direction the eye already travels. */
+    transform: translate(-50%, -50%) rotate(-90deg);
+  }
+
+  /* The score plate and the legend are the only two things in the board that
+     carry text, and a quarter turn would stand both of them on end. They are
+     dropped rather than counter-rotated: the two nameplates already carry the
+     scores, and dropping them hands their height back to the track, which is
+     the scarcer resource in a band this shallow. */
+  .rail__mount > .crib-board > .crib-board__scores,
+  .rail__mount > .crib-board > .crib-board__legend {
+    display: none;
+  }
+}
+
+/* --- < 640px: phone ------------------------------------------------------- */
+@media (max-width: 639.98px) {
+  .app {
+    padding: 0;
+  }
+
+  .table {
+    gap: var(--sp-3);
+    min-height: 100vh;
+    padding: var(--sp-3);
+    border-radius: 0;
+    /* Clearance for the breakdown sheet's handle, which is fixed to the
+       bottom of the viewport from here down. */
+    padding-bottom: calc(var(--sp-7) + var(--sp-4));
+  }
+
+  .supply {
+    gap: var(--sp-4);
+  }
+
+  .play {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--sp-2);
+  }
+
+  .count {
+    min-width: 0;
+    padding: var(--sp-1) var(--sp-2);
+  }
+
+  .count__num {
+    font-size: var(--text-xl);
+  }
+
+  /* Fanned rather than spread. The overlap is taken from --card-overlap so the
+     fan tightens with the cards. The player's own hand keeps a wider stagger
+     than the opponent's: 52px of card less 8px of overlap still leaves a 44px
+     hit target, which is the floor. */
+  .hand {
+    gap: 0;
+  }
+
+  .hand > .card + .card {
+    margin-left: calc(var(--card-overlap) * -1);
+  }
+
+  .hand--player > .card + .card {
+    margin-left: calc(var(--card-overlap) * -0.5);
+  }
+
+  .pile__item + .pile__item {
+    margin-left: calc(var(--card-overlap) * -1);
+  }
+
+  /* The mine/theirs stagger has to shrink with the cards or it eats more height
+     than the cards themselves. */
+  .pile__item[data-side='theirs'] { margin-bottom: var(--sp-4); }
+  .pile__item[data-side='mine'] { margin-top: var(--sp-4); }
+
+  .status {
+    min-height: 44px;
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .status__text {
+    font-size: var(--text-sm);
+  }
+
+  /* The breakdown becomes a bottom sheet: collapsed it is a handle the width of
+     the screen, opened it takes the bottom half. It is a real <button> header,
+     so it works from the keyboard exactly as the desktop panel does. */
+  .notes {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: none;
+  }
+
+  .panel--breakdown {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-modal);
+    max-height: 62vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow:
+      inset 0 1px 0 var(--felt-light),
+      0 -6px 24px var(--felt-edge),
+      var(--shadow-panel);
+    transition: transform var(--t-base) var(--ease);
+  }
+
+  .panel--breakdown .panel__toggle {
+    padding: var(--sp-3);
+    min-height: 48px;
+  }
+
+  /* A grab bar above the title, so the sheet reads as draggable furniture even
+     though it is opened by the header button. */
+  .panel--breakdown .panel__toggle::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 34px;
+    height: 3px;
+    border-radius: 999px;
+    background-color: var(--on-felt-soft);
+    opacity: 0.4;
+    transform: translateX(-50%);
+  }
+
+  .panel--history {
+    max-height: 34vh;
+  }
+}
+
+/* Very narrow: the six-card hand has to fan harder to stay on screen. */
+@media (max-width: 420px) {
+  .hand--player > .card + .card {
+    margin-left: calc(var(--card-overlap) * -0.85);
+  }
+}
+
+/* ===========================================================================
+   10. Utilities
+   =========================================================================== */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Chrome shared by the styleguide and any later settings UI. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 36px;
+  padding: var(--sp-2) var(--sp-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--wood-edge);
+  background-image: linear-gradient(180deg, var(--brass-light), var(--brass));
+  box-shadow: 0 1px 0 var(--brass-deep), var(--shadow-card);
+  transition: transform var(--t-fast) var(--ease), filter var(--t-fast) var(--ease);
+}
+
+.btn:hover {
+  filter: brightness(1.06);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.btn--quiet {
+  color: var(--on-felt);
+  background-image: linear-gradient(180deg, var(--felt), var(--felt-dark));
+  box-shadow: inset 0 0 0 1px var(--felt-edge), var(--shadow-card);
+}
+
+.btn[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 2px var(--glow), var(--shadow-card);
+}

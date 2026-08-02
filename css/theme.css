@@ -1,0 +1,186 @@
+/* ---------------------------------------------------------------------------
+   theme.css — the design system.
+
+   Every colour, dimension, shadow and duration in the game comes from here.
+   Nothing downstream hardcodes a colour or a timing: cards.css, board.css and
+   layout.css consume these tokens only. That is what keeps the felt, the wood
+   and the cards reading as one object instead of three.
+
+   The look is a pub cribbage board: warm oak, green felt, brass pegs, and
+   traditional cards in a slightly creamy white rather than a clinical one.
+   There are no image files anywhere in this project — every surface below is
+   built from gradients, and the wood grain from an SVG turbulence filter.
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* --- The table ------------------------------------------------------- */
+  --felt-light: #2a6144;
+  --felt: #1e5238;
+  --felt-dark: #10331f;
+  --felt-edge: #0a2416;
+
+  /* --- The board ------------------------------------------------------- */
+  /* Four stops rather than two: real oak has a wide tonal range, and a
+     two-stop gradient reads as plastic no matter how good the grain is. */
+  --wood-highlight: #cb9a5c;
+  --wood-light: #b8874a;
+  --wood: #8b5e34;
+  --wood-dark: #5a3a1e;
+  --wood-deep: #3d2613;
+  --wood-edge: #2a1a0d;
+
+  /* Drilled holes read as holes only if the rim catches light at the top and
+     the bore goes genuinely dark at the bottom. */
+  --hole: #2f1e10;
+  --hole-shadow: rgba(0, 0, 0, 0.62);
+  --hole-rim: rgba(255, 226, 178, 0.28);
+
+  /* --- Pegs ------------------------------------------------------------ */
+  --brass-light: #f0d183;
+  --brass: #d4a843;
+  --brass-dark: #a67c1f;
+  --brass-deep: #6d4f10;
+
+  /* The opponent's pegs are pewter so the two players never rely on hue
+     alone — brass vs. silver survives colourblindness and a dim screen. */
+  --pewter-light: #e6e9ee;
+  --pewter: #b3b9c4;
+  --pewter-dark: #7c8492;
+  --pewter-deep: #4a505b;
+
+  /* --- Cards ----------------------------------------------------------- */
+  --card-face: #fbf8f1;
+  --card-face-edge: #e9e2d2;
+  --card-ink: #17171a;
+  --card-suit-red: #b81f27;
+  --card-suit-black: #17171a;
+
+  /* Four-colour deck. Applied by [data-four-color] on the board root; the
+     two-colour deck simply leaves --suit-d and --suit-c at their defaults. */
+  --suit-s: var(--card-suit-black);
+  --suit-h: var(--card-suit-red);
+  --suit-d: var(--card-suit-red);
+  --suit-c: var(--card-suit-black);
+
+  --card-back-red: #9d2b32;
+  --card-back-red-dark: #6f1c22;
+  --card-back-blue: #2a4b7c;
+  --card-back-blue-dark: #1b3357;
+  --card-back-ivory: #f2ece0;
+
+  /* --- Text ------------------------------------------------------------ */
+  --ink: #2b2119;              /* on light surfaces */
+  --ink-soft: #6b5b48;
+  --on-felt: #e9e1d0;          /* warm off-white, never pure #fff on green */
+  --on-felt-soft: #a9b8a5;
+  --on-wood: #f6e6cb;
+
+  /* --- Accents and states ---------------------------------------------- */
+  --glow: #ffd977;             /* scoring highlight */
+  --glow-soft: rgba(255, 217, 119, 0.45);
+  --danger: #d2603f;
+  --focus: #ffd977;
+
+  /* --- Type ------------------------------------------------------------ */
+  /* System stacks only: no font downloads, so the game stays self-contained
+     and works offline from file://. The serif carries the traditional feel
+     on card indices and score numerals; the sans handles UI chrome. */
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    "Times New Roman", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-num: var(--font-serif);
+
+  /* --- Card geometry --------------------------------------------------- */
+  /* Everything about a card derives from --card-w, so one value rescales the
+     whole game. 5:7 is the real playing-card ratio (2.5in x 3.5in).
+
+     CAREFUL: a custom property that references another one resolves against the
+     element it is DECLARED on, not the element it is used on. So --card-h below
+     bakes in the :root value of --card-w and will NOT track a --card-w override
+     set further down the tree — a hand container asking for 88px cards would get
+     88x109 instead of 88x123, and the cards would come out subtly squat.
+
+     Two rules follow, and downstream files depend on both:
+       1. --card-h is only valid where --card-w has NOT been overridden.
+       2. Anything that sizes an actual card should use --card-ratio (or the
+          aspect-ratio below) rather than --card-h, so it survives an override. */
+  --card-w: clamp(52px, 5.2vw, 88px);
+  --card-ratio: 1.4;
+  --card-h: calc(var(--card-w) * var(--card-ratio));
+  --card-radius: calc(var(--card-w) * 0.075);
+  --card-border: max(1px, calc(var(--card-w) * 0.012));
+
+  /* Hand fan overlap, as a fraction of card width. */
+  --card-overlap: calc(var(--card-w) * 0.16);
+  --card-lift: calc(var(--card-h) * 0.16);   /* how far a selected card rises */
+
+  /* --- Board geometry -------------------------------------------------- */
+  --hole-size: clamp(6px, 0.62vw, 9px);
+  --hole-gap: calc(var(--hole-size) * 1.5);      /* within a group of five */
+  --hole-group-gap: calc(var(--hole-size) * 2.4); /* between groups of five */
+  --peg-w: calc(var(--hole-size) * 1.25);
+  --peg-h: calc(var(--hole-size) * 2.6);
+  --board-rail-w: clamp(150px, 15vw, 230px);
+
+  /* --- Spacing --------------------------------------------------------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 14px;
+
+  /* --- Shadows --------------------------------------------------------- */
+  /* Cards sit ON the felt, so their shadow is tight and warm-dark, not the
+     wide grey blur that makes UI cards look like they float in an app. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32), 0 3px 8px rgba(0, 0, 0, 0.24);
+  --shadow-card-raised: 0 4px 8px rgba(0, 0, 0, 0.34), 0 12px 24px rgba(0, 0, 0, 0.3);
+  --shadow-panel: 0 2px 6px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.28);
+  --shadow-board: 0 3px 10px rgba(0, 0, 0, 0.45), 0 18px 44px rgba(0, 0, 0, 0.38);
+  --shadow-inset-felt: inset 0 0 120px rgba(0, 0, 0, 0.45);
+
+  /* --- Motion ---------------------------------------------------------- */
+  /* Every duration is multiplied by --anim-scale, so the animation-speed
+     setting is one knob rather than dozens. 0 makes the game instant. */
+  --anim-scale: 1;
+  --t-fast: calc(150ms * var(--anim-scale));
+  --t-base: calc(250ms * var(--anim-scale));
+  --t-slow: calc(400ms * var(--anim-scale));
+  --t-flip: calc(300ms * var(--anim-scale));
+  --t-deal: calc(400ms * var(--anim-scale));
+  --t-peg-hop: calc(35ms * var(--anim-scale));
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);      /* general UI easing */
+  --ease-card: cubic-bezier(0.2, 0.9, 0.3, 1);    /* cards settling */
+  --ease-peg: cubic-bezier(0.34, 1.4, 0.64, 1);   /* peg dropping into a hole */
+
+  /* --- Layering -------------------------------------------------------- */
+  --z-felt: 0;
+  --z-board: 10;
+  --z-pile: 20;
+  --z-card: 30;
+  --z-card-moving: 60;
+  --z-label: 70;
+  --z-panel: 80;
+  --z-modal: 100;
+}
+
+/* Four-colour deck: diamonds go blue, clubs green. Toggled from settings. */
+[data-four-color="true"] {
+  --suit-d: #1f5aa8;
+  --suit-c: #1d7a3e;
+}
+
+/* Respect the OS setting without needing JS. The in-game speed control sets
+   --anim-scale too; this is the floor. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --anim-scale: 0.001;
+  }
+}

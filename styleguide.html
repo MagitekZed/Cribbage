@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cribbage — style guide</title>
+<meta name="color-scheme" content="dark light">
+
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/cards.css">
+<link rel="stylesheet" href="css/board.css">
+<link rel="stylesheet" href="css/layout.css">
+
+<style>
+  /* Development chrome for this page only. Every value below is a theme token;
+     nothing here ships with the game. */
+  body {
+    background-color: var(--wood-edge);
+    background-image:
+      radial-gradient(ellipse 120% 60% at 50% 0%, var(--wood-deep), transparent 70%);
+  }
+
+  .sg {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: var(--sp-5) var(--sp-4) var(--sp-7);
+  }
+
+  .sg__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+  }
+
+  .sg__head h1 {
+    margin: 0;
+    font-size: var(--text-2xl);
+    font-family: var(--font-serif);
+    color: var(--on-wood);
+  }
+
+  .sg__head p {
+    margin: 0;
+    color: var(--on-wood);
+    opacity: 0.6;
+    font-size: var(--text-sm);
+  }
+
+  .sg__nav {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-label);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    padding: var(--sp-2) 0 var(--sp-3);
+    margin-bottom: var(--sp-5);
+    background-color: var(--wood-edge);
+    box-shadow: inset 0 -1px 0 var(--wood-deep);
+  }
+
+  .sg__nav a {
+    padding: var(--sp-1) var(--sp-3);
+    border-radius: 999px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--on-wood);
+    background-color: var(--wood-deep);
+  }
+
+  .sg__nav a:hover { background-color: var(--wood-dark); }
+  .sg__nav a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  .sg section {
+    margin-bottom: var(--sp-7);
+    scroll-margin-top: var(--sp-7);
+  }
+
+  .sg h2 {
+    margin: 0 0 var(--sp-2);
+    font-size: var(--text-lg);
+    font-family: var(--font-serif);
+    color: var(--on-wood);
+  }
+
+  .sg h3 {
+    margin: var(--sp-5) 0 var(--sp-2);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--on-wood);
+    opacity: 0.58;
+  }
+
+  .sg p.note {
+    margin: 0 0 var(--sp-3);
+    max-width: 68ch;
+    font-size: var(--text-sm);
+    line-height: 1.55;
+    color: var(--on-wood);
+    opacity: 0.68;
+  }
+
+  /* Every demo surface is felt, because that is what the game sits on and a
+     card judged against a white page is a card judged wrong. */
+  .board-surface {
+    padding: var(--sp-4);
+    border-radius: var(--radius);
+    background-color: var(--felt);
+    background-image: linear-gradient(168deg, var(--felt-light), var(--felt-dark));
+    box-shadow: var(--shadow-inset-felt), var(--shadow-panel);
+  }
+
+  .board-surface--wood {
+    background-color: var(--wood);
+    background-image: linear-gradient(168deg, var(--wood-light), var(--wood-deep));
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--sp-3);
+  }
+
+  .row--tight { gap: var(--sp-2); }
+
+  .deck-grid {
+    display: grid;
+    grid-template-columns: repeat(13, max-content);
+    gap: var(--sp-2);
+    overflow-x: auto;
+    padding-bottom: var(--sp-2);
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+  }
+
+  .controls__label {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  /* --- token tables --- */
+
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: var(--sp-2);
+  }
+
+  .swatch {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2);
+    border-radius: var(--radius-sm);
+    background-color: var(--wood-deep);
+  }
+
+  /* Half over cream, half over near-black, so a token carrying alpha shows it. */
+  .swatch__chip {
+    position: relative;
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius-sm);
+    background-image: linear-gradient(90deg,
+      var(--card-face) 0 50%, var(--wood-edge) 50% 100%);
+    box-shadow: inset 0 0 0 1px var(--wood-light);
+    overflow: hidden;
+  }
+
+  .swatch__chip span {
+    position: absolute;
+    inset: 0;
+  }
+
+  .swatch__text { min-width: 0; }
+
+  .swatch__name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--text-xs);
+    color: var(--on-wood);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .swatch__value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--text-xs);
+    color: var(--on-wood);
+    opacity: 0.6;
+  }
+
+  table.tokens {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+
+  table.tokens th,
+  table.tokens td {
+    padding: var(--sp-1) var(--sp-2);
+    text-align: left;
+    box-shadow: inset 0 -1px 0 var(--wood-deep);
+  }
+
+  table.tokens th {
+    font-size: var(--text-xs);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--on-wood);
+    opacity: 0.55;
+  }
+
+  table.tokens td:first-child {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--text-xs);
+    color: var(--on-wood);
+    white-space: nowrap;
+  }
+
+  table.tokens td:nth-child(2) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--text-xs);
+    color: var(--brass-light);
+  }
+
+  table.tokens td:last-child { color: var(--on-wood); opacity: 0.66; }
+
+  table.tokens td.declared {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--text-xs);
+    color: var(--on-wood);
+    opacity: 0.45;
+  }
+
+  .scroller {
+    overflow-x: auto;
+    padding-bottom: var(--sp-2);
+  }
+
+  .type-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-4);
+    padding: var(--sp-2) 0;
+    box-shadow: inset 0 -1px 0 var(--felt-edge);
+    color: var(--on-felt);
+  }
+
+  .type-row__meta {
+    flex: 0 0 150px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--text-xs);
+    color: var(--on-felt-soft);
+  }
+
+  .type-row__meta:last-child { flex: 0 0 190px; }
+  .type-row__sample { flex: 1 1 auto; min-width: 0; }
+
+  .caption {
+    margin: var(--sp-2) 0 0;
+    font-size: var(--text-xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--on-felt-soft);
+  }
+
+  .boards {
+    display: flex;
+    gap: var(--sp-4);
+    overflow-x: auto;
+    padding-bottom: var(--sp-3);
+  }
+
+  .board-case {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  .board-case > .crib-board {
+    height: 620px;
+  }
+
+  .shadow-chip {
+    width: 120px;
+    height: 78px;
+    border-radius: var(--radius);
+    background-color: var(--card-face);
+  }
+
+  .demo-notes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--sp-3);
+    max-width: 700px;
+  }
+
+  .demo-notes .panel { min-height: 190px; }
+
+  /* Narrow: the three-column type rows and the swatch grid stack rather than
+     run off the side. The wide tables already live in .scroller. */
+  @media (max-width: 760px) {
+    .type-row { flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); }
+    .type-row__meta,
+    .type-row__meta:last-child { flex: 1 1 100%; }
+    .sg { padding: var(--sp-4) var(--sp-3) var(--sp-6); }
+  }
+</style>
+</head>
+<body>
+
+<div class="sg" id="sg">
+  <div class="sg__head">
+    <h1>Cribbage style guide</h1>
+    <p>Every surface in the game, off the felt and out of a running hand. Nothing on this page is an image file.</p>
+  </div>
+
+  <nav class="sg__nav" aria-label="Sections">
+    <a href="#type">Type</a>
+    <a href="#colour">Colour</a>
+    <a href="#dimensions">Dimensions</a>
+    <a href="#motion">Motion</a>
+    <a href="#deck">The deck</a>
+    <a href="#states">Card states</a>
+    <a href="#board">The board</a>
+    <a href="#furniture">Screen furniture</a>
+    <a href="#elevation">Elevation</a>
+  </nav>
+
+  <!-- ==================================================== type ============ -->
+  <section id="type">
+    <h2>Type scale</h2>
+    <p class="note">
+      Two system stacks, no downloads. The serif carries card indices and every score
+      numeral; the sans handles all UI chrome. The six sizes are declared at
+      <code>:root</code> in layout.css and are a candidate for promotion into theme.css.
+    </p>
+    <div class="board-surface" id="type-scale"></div>
+  </section>
+
+  <!-- ================================================== colour =========== -->
+  <section id="colour">
+    <h2>Colour tokens</h2>
+    <p class="note">
+      Read live out of <code>theme.css</code> at page load, so this table cannot drift from
+      the stylesheet. Each chip sits half over cream and half over near-black, which is how
+      the tokens carrying alpha give themselves away.
+    </p>
+    <div id="colour-groups"></div>
+  </section>
+
+  <!-- ============================================== dimensions =========== -->
+  <section id="dimensions">
+    <h2>Dimensions</h2>
+    <p class="note">
+      Resolved against the current viewport — resize the window and reload to see the
+      clamps move. Card geometry all derives from <code>--card-w</code>; board geometry all
+      derives from <code>--hole-size</code>.
+    </p>
+    <div class="scroller"><table class="tokens" id="dim-table"></table></div>
+  </section>
+
+  <!-- =================================================== motion ========== -->
+  <section id="motion">
+    <h2>Motion</h2>
+    <p class="note">
+      One multiplier, <code>--anim-scale</code>, drives every duration in the game, and
+      <code>prefers-reduced-motion</code> drops it to 0.001. If the durations below read as
+      near-zero, that is your OS setting, not a bug.
+    </p>
+    <div class="scroller"><table class="tokens" id="motion-table"></table></div>
+  </section>
+
+  <!-- ===================================================== deck ========== -->
+  <section id="deck">
+    <h2>The deck — all 52</h2>
+    <p class="note">
+      Rows are the four suits in card-id order (spades, hearts, diamonds, clubs), columns
+      are ace through king. Every pip is an inline SVG <code>&lt;use&gt;</code> of one of
+      four symbols; the courts are a typographic panel, not an illustration.
+    </p>
+    <div class="controls">
+      <span class="controls__label">Deck</span>
+      <button class="btn btn--quiet" type="button" id="four-color" aria-pressed="false">Four-colour deck</button>
+      <span class="controls__label" style="margin-left:var(--sp-4)">Card width</span>
+      <button class="btn btn--quiet" type="button" data-size="52" aria-pressed="false">52px</button>
+      <button class="btn btn--quiet" type="button" data-size="68" aria-pressed="true">68px</button>
+      <button class="btn btn--quiet" type="button" data-size="88" aria-pressed="false">88px</button>
+    </div>
+    <div class="board-surface">
+      <div class="scroller"><div class="deck-grid" id="all-cards"></div></div>
+    </div>
+  </section>
+
+  <!-- =================================================== states ========== -->
+  <section id="states">
+    <h2>Backs and states</h2>
+    <p class="note">
+      Every state carries a cue that is not colour: selected rises, highlighted grows a
+      solid ring, unplayable gets a hatch, face-down announces itself as face-down rather
+      than as its identity.
+    </p>
+    <div class="board-surface">
+      <div class="row" id="state-cards"></div>
+    </div>
+    <p class="caption">Tab through the interactive cards to see the focus ring.</p>
+  </section>
+
+  <!-- ==================================================== board ========== -->
+  <section id="board">
+    <h2>The board</h2>
+    <p class="note">
+      Four boards at different score pairs. The third straddles the skunk line at 91 — the
+      pone is short of it, the dealer is past it. The fourth is a 61-point board, where the
+      skunk line moves to 31 with it.
+    </p>
+    <div class="boards" id="boards"></div>
+  </section>
+
+  <!-- ================================================ furniture ========== -->
+  <section id="furniture">
+    <h2>Screen furniture</h2>
+    <p class="note">
+      The pieces layout.css owns, shown against felt. The two notes panels are shown filled
+      here; on the game screen they ship empty, because Phase 4 is what puts rows in them.
+    </p>
+
+    <h3>Status line</h3>
+    <div class="board-surface">
+      <div class="status" data-turn="mine" style="margin-bottom:var(--sp-3)">
+        <span class="status__mark" aria-hidden="true"></span>
+        <p class="status__text">Your turn — play a card.</p>
+      </div>
+      <div class="status" data-turn="none">
+        <span class="status__mark" aria-hidden="true"></span>
+        <p class="status__text">Counting Opponent&rsquo;s hand.</p>
+      </div>
+    </div>
+
+    <h3>Nameplates and the running count</h3>
+    <div class="board-surface">
+      <section class="seat seat--opponent" data-peg="pewter" style="margin-bottom:var(--sp-4)">
+        <div class="seat__bar">
+          <span class="seat__pip" aria-hidden="true"></span>
+          <h2 class="seat__name">Opponent</h2>
+          <span class="seat__badge">Dealer</span>
+          <span class="seat__score"><span class="seat__score-num">88</span><span class="seat__score-of">/ 121</span></span>
+        </div>
+      </section>
+      <section class="seat" data-peg="brass" style="margin-bottom:var(--sp-4)">
+        <div class="seat__bar">
+          <span class="seat__pip" aria-hidden="true"></span>
+          <h2 class="seat__name">You</h2>
+          <span class="seat__score"><span class="seat__score-num">91</span><span class="seat__score-of">/ 121</span></span>
+        </div>
+      </section>
+      <div class="row">
+        <div class="count"><span class="count__label">Count</span><span class="count__num">15</span></div>
+        <div class="count" data-full="true"><span class="count__label">Count</span><span class="count__num">31</span></div>
+        <div class="well"></div>
+      </div>
+      <p class="caption">Count plate, the plate at thirty-one, and an empty slot well.</p>
+    </div>
+
+    <h3>The pile</h3>
+    <div class="board-surface">
+      <ol class="pile" id="demo-pile"></ol>
+      <p class="caption">A spent series knocked back, then the live one at full strength.</p>
+    </div>
+
+    <h3>Notes panels</h3>
+    <div class="board-surface">
+      <div class="demo-notes">
+        <section class="panel" data-open="true">
+          <button class="panel__toggle" type="button" aria-expanded="true">
+            <h3 class="panel__title" style="margin:0">The count</h3>
+            <span class="panel__caret" aria-hidden="true"></span>
+          </button>
+          <div class="panel__body">
+            <ol class="tally">
+              <li class="tally__row"><span class="tally__label">Fifteen two</span><span class="tally__points">2</span></li>
+              <li class="tally__row"><span class="tally__label">Fifteen four</span><span class="tally__points">2</span></li>
+              <li class="tally__row"><span class="tally__label">Run of three</span><span class="tally__points">3</span></li>
+              <li class="tally__row"><span class="tally__label">Pair</span><span class="tally__points">2</span></li>
+              <li class="tally__row" data-total="true"><span class="tally__label">Hand</span><span class="tally__points">9</span></li>
+            </ol>
+          </div>
+        </section>
+        <section class="panel" data-open="true">
+          <button class="panel__toggle" type="button" aria-expanded="true">
+            <h3 class="panel__title" style="margin:0">Hand history</h3>
+            <span class="panel__caret" aria-hidden="true"></span>
+          </button>
+          <div class="panel__body">
+            <ol class="log">
+              <li class="log__row"><span class="log__who">You</span> — hand <span class="log__points">9</span>: two fifteens, a run of three, a pair</li>
+              <li class="log__row"><span class="log__who">Opponent</span> — crib <span class="log__points">4</span>: two fifteens</li>
+              <li class="log__row"><span class="log__who">You</span> — pegged <span class="log__points">3</span></li>
+            </ol>
+          </div>
+        </section>
+      </div>
+      <p class="caption">Both headers are real buttons — click one to collapse it.</p>
+    </div>
+  </section>
+
+  <!-- ================================================ elevation ========== -->
+  <section id="elevation">
+    <h2>Elevation</h2>
+    <p class="note">
+      Shadows are tight and warm-dark rather than wide and grey: everything in this game is
+      resting on a table a few millimetres below it.
+    </p>
+    <div class="board-surface">
+      <div class="row" id="shadows"></div>
+    </div>
+  </section>
+</div>
+
+<script src="js/cards.js"></script>
+<script src="js/scoring.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/render-cards.js"></script>
+<script src="js/render-board.js"></script>
+<script src="js/render.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  var Cards = Cribbage.Cards;
+  var RC = Cribbage.RenderCards;
+  var RB = Cribbage.RenderBoard;
+  var css = getComputedStyle(document.documentElement);
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  function value(name) {
+    return css.getPropertyValue(name).trim();
+  }
+
+  // getPropertyValue on a custom property hands back what was DECLARED, clamp()
+  // and calc() and all. To see what a token is actually worth at this viewport
+  // it has to be pushed through a real property and read out computed.
+  var probe = document.createElement('div');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = 'position:absolute;top:0;left:0;height:0;visibility:hidden;';
+  document.body.appendChild(probe);
+
+  function resolved(name, kind) {
+    if (kind === 'length') {
+      probe.style.width = 'var(' + name + ')';
+      var w = getComputedStyle(probe).width;
+      probe.style.width = '';
+      return w;
+    }
+    if (kind === 'time') {
+      probe.style.transitionDuration = 'var(' + name + ')';
+      var t = getComputedStyle(probe).transitionDuration;
+      probe.style.transitionDuration = '';
+      return t;
+    }
+    return value(name) || '—';
+  }
+
+  // ---------------------------------------------------------------- type ---
+
+  var TYPE = [
+    ['--text-2xl', 'Page and section titles'],
+    ['--text-xl', 'Score numerals on the felt'],
+    ['--text-lg', 'Headings'],
+    ['--text-md', 'Body and the status line'],
+    ['--text-sm', 'Nameplates, panel rows'],
+    ['--text-xs', 'Labels, legends, captions']
+  ];
+
+  var typeHost = document.getElementById('type-scale');
+  TYPE.forEach(function (t) {
+    var row = el('div', 'type-row');
+    row.appendChild(el('span', 'type-row__meta', t[0] + '  ' + value(t[0])));
+    var sample = el('span', 'type-row__sample', 'Fifteen two, fifteen four — 91');
+    sample.style.fontSize = 'var(' + t[0] + ')';
+    sample.style.fontFamily = t[0] === '--text-2xl' || t[0] === '--text-xl'
+      ? 'var(--font-serif)' : 'var(--font-sans)';
+    row.appendChild(sample);
+    row.appendChild(el('span', 'type-row__meta', t[1]));
+    typeHost.appendChild(row);
+  });
+
+  // -------------------------------------------------------------- colour ---
+
+  var COLOUR_GROUPS = [
+    ['The table', ['--felt-light', '--felt', '--felt-dark', '--felt-edge']],
+    ['The board', ['--wood-highlight', '--wood-light', '--wood', '--wood-dark',
+      '--wood-deep', '--wood-edge', '--hole', '--hole-shadow', '--hole-rim']],
+    ['Pegs', ['--brass-light', '--brass', '--brass-dark', '--brass-deep',
+      '--pewter-light', '--pewter', '--pewter-dark', '--pewter-deep']],
+    ['Cards', ['--card-face', '--card-face-edge', '--card-ink', '--card-suit-red',
+      '--card-suit-black', '--suit-s', '--suit-h', '--suit-d', '--suit-c',
+      '--card-back-red', '--card-back-red-dark', '--card-back-blue',
+      '--card-back-blue-dark', '--card-back-ivory']],
+    ['Text', ['--ink', '--ink-soft', '--on-felt', '--on-felt-soft', '--on-wood']],
+    ['Accents and states', ['--glow', '--glow-soft', '--danger', '--focus']]
+  ];
+
+  var colourHost = document.getElementById('colour-groups');
+  COLOUR_GROUPS.forEach(function (group) {
+    colourHost.appendChild(el('h3', null, group[0]));
+    var grid = el('div', 'swatches');
+    group[1].forEach(function (name) {
+      var sw = el('div', 'swatch');
+      var chip = el('span', 'swatch__chip');
+      var fill = el('span');
+      fill.style.backgroundColor = 'var(' + name + ')';
+      chip.appendChild(fill);
+      var text = el('div', 'swatch__text');
+      text.appendChild(el('div', 'swatch__name', name));
+      text.appendChild(el('div', 'swatch__value', value(name) || '—'));
+      sw.appendChild(chip);
+      sw.appendChild(text);
+      grid.appendChild(sw);
+    });
+    colourHost.appendChild(grid);
+  });
+
+  // ---------------------------------------------------------- dimensions ---
+
+  function fillTable(table, rows) {
+    var head = el('tr');
+    ['Token', 'Here and now', 'Declared', 'What it is'].forEach(function (h) {
+      head.appendChild(el('th', null, h));
+    });
+    var thead = document.createElement('thead');
+    thead.appendChild(head);
+    table.appendChild(thead);
+    var body = document.createElement('tbody');
+    rows.forEach(function (r) {
+      var tr = el('tr');
+      tr.appendChild(el('td', null, r[0]));
+      tr.appendChild(el('td', null, resolved(r[0], r[2])));
+      var dec = el('td', 'declared', value(r[0]) || '—');
+      tr.appendChild(dec);
+      tr.appendChild(el('td', null, r[1]));
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+  }
+
+  fillTable(document.getElementById('dim-table'), [
+    ['--card-w', 'The one knob that rescales every card', 'length'],
+    ['--card-h', 'Derived: 5:7, the real playing-card ratio', 'length'],
+    ['--card-radius', 'Corner radius, derived from --card-w', 'length'],
+    ['--card-border', 'Hairline edge', 'length'],
+    ['--card-overlap', 'How far a fanned hand tucks each card under the last', 'length'],
+    ['--card-lift', 'How far a selected card rises', 'length'],
+    ['--hole-size', 'Drilled hole diameter; the whole board derives from it', 'length'],
+    ['--hole-gap', 'Between holes inside a group of five', 'length'],
+    ['--hole-group-gap', 'Between one group of five and the next', 'length'],
+    ['--peg-w', 'Peg shaft width', 'length'],
+    ['--peg-h', 'Peg height, head included', 'length'],
+    ['--board-rail-w', 'Width of the board rail on the desktop layout', 'length'],
+    ['--sp-1', 'Hairline gaps', 'length'],
+    ['--sp-2', 'Inside a control', 'length'],
+    ['--sp-3', 'Between rows', 'length'],
+    ['--sp-4', 'Between blocks', 'length'],
+    ['--sp-5', 'Between groups on the table', 'length'],
+    ['--sp-6', 'The pile stagger', 'length'],
+    ['--sp-7', 'Section spacing', 'length'],
+    ['--radius-sm', 'Chips, plates', 'length'],
+    ['--radius', 'Panels, the count plate', 'length'],
+    ['--radius-lg', 'The table, the board, the bottom sheet', 'length'],
+    ['--text-xs', 'Labels, legends, captions', 'length'],
+    ['--text-sm', 'Nameplates, panel rows', 'length'],
+    ['--text-md', 'Body and the status line', 'length'],
+    ['--text-lg', 'Headings', 'length'],
+    ['--text-xl', 'Score numerals on the felt', 'length'],
+    ['--text-2xl', 'The running count', 'length']
+  ]);
+
+  fillTable(document.getElementById('motion-table'), [
+    ['--anim-scale', 'The single speed multiplier', 'raw'],
+    ['--t-fast', 'Hovers, dims, small affordances', 'time'],
+    ['--t-base', 'General UI settling', 'time'],
+    ['--t-slow', 'Score highlights', 'time'],
+    ['--t-flip', 'A card turning over', 'time'],
+    ['--t-deal', 'The whole deal', 'time'],
+    ['--t-peg-hop', 'One hole of peg travel', 'time'],
+    ['--ease', 'General UI easing', 'raw'],
+    ['--ease-card', 'A card settling', 'raw'],
+    ['--ease-peg', 'A peg dropping into a hole', 'raw']
+  ]);
+
+  // ---------------------------------------------------------------- deck ---
+
+  var deckGrid = document.getElementById('all-cards');
+  // Rows are suits so a whole suit reads across, which is how you spot a pip
+  // layout that is wrong at one rank only.
+  for (var suit = 0; suit < 4; suit++) {
+    for (var rank = 1; rank <= 13; rank++) {
+      deckGrid.appendChild(RC.createCard(Cards.makeCard(rank, suit)));
+    }
+  }
+
+  var fourColorBtn = document.getElementById('four-color');
+  fourColorBtn.addEventListener('click', function () {
+    var on = fourColorBtn.getAttribute('aria-pressed') !== 'true';
+    fourColorBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    document.body.setAttribute('data-four-color', on ? 'true' : 'false');
+  });
+
+  var sizeButtons = Array.prototype.slice.call(document.querySelectorAll('[data-size]'));
+  function setSize(px) {
+    deckGrid.style.setProperty('--card-w', px + 'px');
+    sizeButtons.forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-size') === String(px) ? 'true' : 'false');
+    });
+  }
+  sizeButtons.forEach(function (b) {
+    b.addEventListener('click', function () { setSize(Number(b.getAttribute('data-size'))); });
+  });
+  setSize(68);
+
+  // -------------------------------------------------------------- states ---
+
+  var stateHost = document.getElementById('state-cards');
+  function labelled(node, text) {
+    var wrap = el('div');
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.gap = 'var(--sp-2)';
+    wrap.style.alignItems = 'center';
+    wrap.appendChild(node);
+    wrap.appendChild(el('span', 'caption', text));
+    return wrap;
+  }
+
+  var five = Cards.makeCard(5, 1);
+  stateHost.appendChild(labelled(RC.createBack('red'), 'Back — red'));
+  stateHost.appendChild(labelled(RC.createBack('blue'), 'Back — blue'));
+  stateHost.appendChild(labelled(RC.createCard(five, { interactive: true }), 'Interactive'));
+  stateHost.appendChild(labelled(
+    RC.createCard(Cards.makeCard(12, 0), { interactive: true, selected: true }), 'Selected'));
+  stateHost.appendChild(labelled(
+    RC.createCard(Cards.makeCard(10, 2), { highlighted: true }), 'Scoring'));
+  stateHost.appendChild(labelled(
+    RC.createCard(Cards.makeCard(9, 3), { interactive: true, disabled: true }), 'Unplayable'));
+  stateHost.appendChild(labelled(
+    RC.createCard(Cards.makeCard(1, 0), { faceDown: true }), 'Face down'));
+
+  // --------------------------------------------------------------- board ---
+
+  var BOARD_CASES = [
+    { target: 121, label: 'Fresh board — both pegs in the start holes', pegs: [[0, 0], [0, 0]] },
+    { target: 121, label: 'Mid game — 37 and 44', pegs: [[33, 37], [40, 44]] },
+    { target: 121, label: 'Straddling the skunk line at 91', pegs: [[84, 88], [89, 91]] },
+    { target: 61, label: '61-point board, its skunk line at 31', pegs: [[26, 28], [29, 31]] }
+  ];
+
+  var boardHost = document.getElementById('boards');
+  BOARD_CASES.forEach(function (c) {
+    var wrap = el('div', 'board-case');
+    var board = RB.create({ targetScore: c.target, labels: ['You', 'Opponent'] });
+    wrap.appendChild(board.el);
+    wrap.appendChild(el('span', 'caption', c.label));
+    boardHost.appendChild(wrap);
+    // After it is in the document, so the first layout has a box to measure.
+    board.setPegs(0, c.pegs[0][0], c.pegs[0][1]);
+    board.setPegs(1, c.pegs[1][0], c.pegs[1][1]);
+    board.refresh();
+  });
+
+  // ---------------------------------------------------------------- pile ---
+
+  var pileHost = document.getElementById('demo-pile');
+  var PILE = [
+    { card: Cards.parseCard('8D'), player: 1, spent: true },
+    { card: Cards.parseCard('7S'), player: 0, spent: true },
+    { card: Cards.parseCard('QH'), player: 1, spent: true },
+    { card: Cards.parseCard('6C'), player: 1, spent: false, start: true },
+    { card: Cards.parseCard('5S'), player: 0, spent: false }
+  ];
+  PILE.forEach(function (entry) {
+    var item = el('li', 'pile__item');
+    item.setAttribute('data-player', String(entry.player));
+    item.setAttribute('data-side', entry.player === 0 ? 'mine' : 'theirs');
+    item.setAttribute('data-peg', entry.player === 0 ? 'brass' : 'pewter');
+    item.setAttribute('data-spent', entry.spent ? 'true' : 'false');
+    item.setAttribute('data-series-start', entry.start ? 'true' : 'false');
+    item.appendChild(RC.createCard(entry.card));
+    var owner = el('span', 'pile__owner');
+    owner.setAttribute('aria-hidden', 'true');
+    item.appendChild(owner);
+    pileHost.appendChild(item);
+  });
+
+  // ------------------------------------------------------------- shadows ---
+
+  var shadowHost = document.getElementById('shadows');
+  ['--shadow-card', '--shadow-card-raised', '--shadow-panel', '--shadow-board']
+    .forEach(function (name) {
+      var chip = el('div', 'shadow-chip');
+      chip.style.boxShadow = 'var(' + name + ')';
+      shadowHost.appendChild(labelled(chip, name));
+    });
+
+  // Panel headers on this page are the same control the game uses.
+  Array.prototype.slice.call(document.querySelectorAll('.panel__toggle'))
+    .forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var panel = btn.closest('.panel');
+        var open = panel.getAttribute('data-open') !== 'true';
+        panel.setAttribute('data-open', open ? 'true' : 'false');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    });
+})();
+</script>
+
+</body>
+</html>

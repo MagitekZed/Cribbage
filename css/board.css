@@ -1,0 +1,349 @@
+/* ---------------------------------------------------------------------------
+   board.css — the cribbage board: oak, drilled holes, brass and pewter pegs.
+
+   Every colour, radius, shadow and dimension comes from theme.css via var().
+   Nothing here is a literal colour. The one non-token custom property is
+   --cb-scale, which is not a design token: render-board.js writes the measured
+   fit-to-height ratio into it so the pegs shrink with the track.
+
+   No transitions live in this file. Phase 4 owns motion; all it needs is that
+   a peg's position is left/top, which it is.
+   --------------------------------------------------------------------------- */
+
+.crib-board {
+  --cb-scale: 1;
+  /* A seated peg dips below the hole centre so the bore disappears behind it. */
+  --cb-peg-seat: calc(var(--hole-size) * var(--cb-scale) * 0.3);
+
+  position: relative;
+  isolation: isolate;                 /* keeps the grain blending with the oak,
+                                         not with whatever is behind the rail */
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--board-rail-w);
+  height: 100%;
+  min-height: 320px;
+  padding: var(--sp-3) var(--sp-2) var(--sp-2);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  z-index: var(--z-board);
+
+  /* Four stops across the width and a darkened end grain top and bottom. A
+     narrow tall plank shows its colour variation across the grain, not along it.
+     The two big soft ellipses on top of that stop the length of the board from
+     reading as one flat extrusion. */
+  background-color: var(--wood);
+  background-image:
+    linear-gradient(180deg,
+      var(--wood-deep) 0%,
+      transparent 3.5%,
+      transparent 96.5%,
+      var(--wood-edge) 100%),
+    radial-gradient(ellipse 90% 34% at 32% 20%, var(--wood-highlight), transparent 70%),
+    radial-gradient(ellipse 100% 40% at 76% 74%, var(--wood-dark), transparent 72%),
+    linear-gradient(96deg,
+      var(--wood-dark) 0%,
+      var(--wood) 9%,
+      var(--wood-light) 25%,
+      var(--wood) 41%,
+      var(--wood-highlight) 55%,
+      var(--wood-light) 69%,
+      var(--wood) 84%,
+      var(--wood-dark) 100%);
+
+  /* Bevel: light catches the top and left arris, the bottom and right fall away. */
+  box-shadow:
+    inset 0 1px 0 var(--wood-highlight),
+    inset 1px 0 0 var(--wood-light),
+    inset -1px 0 0 var(--wood-dark),
+    inset 0 -2px 0 var(--wood-edge),
+    inset 0 6px 12px -6px var(--wood-highlight),
+    inset 0 -14px 18px -14px var(--wood-edge),
+    var(--shadow-board);
+}
+
+/* The routed field the track sits in: a shallow recess, not a drawn outline. */
+.crib-board::before {
+  content: '';
+  position: absolute;
+  inset: var(--sp-1);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 3px var(--hole-shadow),
+    inset 0 -1px 0 var(--wood-highlight);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.crib-board__probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* --- Grain ---------------------------------------------------------------- */
+
+.crib-board__grain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Long rays, displaced by turbulence so they wander like real oak. */
+.crib-board__grain--lines {
+  mix-blend-mode: multiply;
+  opacity: 0.42;
+  z-index: 0;
+}
+
+/* Broad figure: lightens and darkens, which multiply alone cannot do. */
+.crib-board__grain--figure {
+  mix-blend-mode: soft-light;
+  opacity: 0.55;
+  z-index: 0;
+}
+
+/* Fine pore texture over the top, so the surface is never flat. */
+.crib-board__grain--noise {
+  mix-blend-mode: overlay;
+  opacity: 0.16;
+  z-index: 0;
+}
+
+.cb-grain-a { fill: var(--wood-deep); }
+.cb-grain-b { fill: var(--wood-dark); }
+
+/* --- Track ---------------------------------------------------------------- */
+
+.crib-board__track {
+  position: absolute;
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* Measured, never painted. */
+.cb-spine {
+  fill: none;
+  stroke: none;
+}
+
+.cb-bore { fill: var(--hole); }
+.cb-rim { fill: none; }
+
+.cb-stop-shadow { stop-color: var(--hole-shadow); }
+.cb-stop-rim { stop-color: var(--hole-rim); }
+
+/* Skunk lines: a brass wire inlay sitting in its own shallow groove. Single bar
+   for the skunk line, double bar for the double skunk, so the two never depend
+   on colour or position alone to be told apart. */
+.cb-mark {
+  stroke: var(--brass);
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+.cb-mark-groove {
+  stroke: var(--wood-edge);
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+
+.cb-game-ring {
+  fill: none;
+  stroke: var(--brass-dark);
+  opacity: 0.55;
+}
+
+/* --- Pegs ----------------------------------------------------------------- */
+
+.crib-board__pegs {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.crib-peg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--peg-w) * var(--cb-scale));
+  height: calc(var(--peg-h) * var(--cb-scale));
+  border-radius: 42% 42% 30% 30% / 22% 22% 10% 10%;
+  transform: translate(-50%, calc(-100% + var(--cb-peg-seat)));
+  filter: drop-shadow(1px 2px 2px var(--hole-shadow));
+}
+
+/* Cylindrical shading: dark edge, a hot specular band a third of the way across,
+   a softer return on the far side. Two edges of light is what stops a gradient
+   reading as a flat lozenge. The second layer darkens the foot, where the post
+   is occluded by its own hole. */
+.crib-peg--brass {
+  background-image:
+    linear-gradient(0deg, var(--brass-deep) 0%, transparent 30%),
+    linear-gradient(96deg,
+      var(--brass-deep) 0%,
+      var(--brass-dark) 11%,
+      var(--brass-light) 31%,
+      var(--brass) 48%,
+      var(--brass-dark) 76%,
+      var(--brass-deep) 97%);
+}
+
+.crib-peg--pewter {
+  background-image:
+    linear-gradient(0deg, var(--pewter-deep) 0%, transparent 30%),
+    linear-gradient(96deg,
+      var(--pewter-deep) 0%,
+      var(--pewter-dark) 11%,
+      var(--pewter-light) 31%,
+      var(--pewter) 48%,
+      var(--pewter-dark) 76%,
+      var(--pewter-deep) 97%);
+}
+
+/* The head: a proud cap, wider than the shaft, with a collar shadow beneath it
+   so the two read as separate turned parts rather than one blob. */
+.crib-peg::before {
+  content: '';
+  position: absolute;
+  left: -18%;
+  top: -5%;
+  width: 136%;
+  height: 27%;
+  border-radius: 50%;
+  background-image: inherit;
+  box-shadow: 0 2px 2px -1px var(--hole-shadow);
+}
+
+/* Contact shadow where the peg meets the board, thrown to the lower right to
+   agree with the light on the hole rims. */
+.crib-peg::after {
+  content: '';
+  position: absolute;
+  left: -22%;
+  bottom: -6%;
+  width: 156%;
+  height: 22%;
+  border-radius: 50%;
+  background-image: radial-gradient(closest-side, var(--hole-shadow), transparent);
+  z-index: -1;
+}
+
+/* --- Score plate ---------------------------------------------------------- */
+
+.crib-board__scores {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  gap: var(--sp-1);
+  align-items: stretch;
+  padding: var(--sp-1);
+  border-radius: var(--radius-sm);
+  background-image: linear-gradient(180deg, var(--wood-dark), var(--wood-deep));
+  box-shadow:
+    inset 0 2px 5px var(--hole-shadow),
+    inset 0 -1px 0 var(--wood-dark),
+    0 1px 0 var(--wood-highlight);
+}
+
+.crib-score {
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: var(--sp-1);
+  align-items: center;
+  text-align: left;
+}
+
+/* The pip sits with the numeral, not the label: it ties the peg colour to the
+   score, and it frees the whole column width for the name so "Opponent" still
+   fits when the rail is at its narrowest. */
+.crib-score__pip {
+  grid-row: 2;
+  grid-column: 1;
+  align-self: center;
+  width: clamp(7px, calc(var(--board-rail-w) * 0.05), 11px);
+  height: clamp(7px, calc(var(--board-rail-w) * 0.05), 11px);
+  border-radius: 50%;
+  box-shadow: inset 0 -1px 1px var(--hole-shadow);
+}
+
+.crib-score--p0 .crib-score__pip {
+  background-image: radial-gradient(circle at 35% 28%, var(--brass-light), var(--brass) 55%, var(--brass-deep));
+}
+
+.crib-score--p1 .crib-score__pip {
+  background-image: radial-gradient(circle at 35% 28%, var(--pewter-light), var(--pewter) 55%, var(--pewter-deep));
+}
+
+.crib-score__label {
+  grid-row: 1;
+  grid-column: 1 / -1;
+  font-family: var(--font-sans);
+  font-size: clamp(8px, calc(var(--board-rail-w) * 0.058), 12px);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--on-wood);
+  opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crib-score__num {
+  grid-row: 2;
+  grid-column: 2;
+  font-family: var(--font-num);
+  font-size: clamp(20px, calc(var(--board-rail-w) * 0.19), 42px);
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-wood);
+  text-shadow: 0 1px 0 var(--wood-edge), 0 2px 3px var(--hole-shadow);
+}
+
+/* --- Legend --------------------------------------------------------------- */
+
+.crib-board__legend {
+  position: absolute;
+  left: var(--sp-2);
+  right: var(--sp-2);
+  bottom: var(--sp-2);
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-1);
+  font-family: var(--font-sans);
+  font-size: clamp(8px, calc(var(--board-rail-w) * 0.048), 11px);
+  letter-spacing: 0.04em;
+  color: var(--on-wood);
+}
+
+.crib-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  opacity: 0.8;
+  text-shadow: 0 1px 1px var(--wood-edge);
+}
+
+.crib-legend__mark {
+  width: 12px;
+  flex: 0 0 12px;
+  border-top: 2px solid var(--brass);
+}
+
+.crib-legend__mark--double {
+  height: 5px;
+  border-bottom: 2px solid var(--brass);
+}
