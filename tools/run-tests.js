@@ -20,11 +20,16 @@ var argv = process.argv.slice(2);
 var options = {
   exhaustive: argv.indexOf('--exhaustive') !== -1,
   verbose: argv.indexOf('--verbose') !== -1,
-  games: 2000
+  games: 2000,
+  // Full AI-vs-AI games. Every decision in them is checked against the engine's own
+  // list of legal actions, and a hard lay-away costs real milliseconds, so the
+  // default is small enough to keep the suite quick.
+  aiGames: 8
 };
 
 function usage() {
-  return 'Usage: node tools/run-tests.js [--exhaustive] [--games=N] [--verbose]';
+  return 'Usage: node tools/run-tests.js [--exhaustive] [--games=N] [--ai-games=N] ' +
+    '[--verbose]';
 }
 
 if (argv.indexOf('--help') !== -1 || argv.indexOf('-h') !== -1) {
@@ -38,6 +43,11 @@ argv.forEach(function (a) {
   var m = /^--games=(\d+)$/.exec(a);
   if (m) {
     options.games = parseInt(m[1], 10);
+    return;
+  }
+  m = /^--ai-games=(\d+)$/.exec(a);
+  if (m) {
+    options.aiGames = parseInt(m[1], 10);
     return;
   }
   unknown.push(a);
@@ -54,8 +64,10 @@ var files = [
   'js/scoring.js',
   'js/scoring-naive.js',
   'js/engine.js',
+  'js/ai.js',
   'js/tests.js',
   'js/engine-tests.js',
+  'js/ai-tests.js',
   // animate.js is a browser script but touches no DOM until create() is called,
   // and its suite injects its own document, so both load cleanly under Node.
   'js/animate.js',
@@ -91,6 +103,10 @@ if (!globalThis.Cribbage.EngineTests) {
   console.error('js/engine-tests.js did not register Cribbage.EngineTests');
   process.exit(1);
 }
+if (!globalThis.Cribbage.AITests) {
+  console.error('js/ai-tests.js did not register Cribbage.AITests');
+  process.exit(1);
+}
 if (!globalThis.Cribbage.AnimateTests) {
   console.error('js/animate-tests.js did not register Cribbage.AnimateTests');
   process.exit(1);
@@ -106,6 +122,7 @@ console.log('  scoring — show cases: ' + globalThis.Cribbage.Tests.showCaseCou
   '   play sequences: ' + globalThis.Cribbage.Tests.playCaseCount +
   (options.exhaustive ? '   + exhaustive enumeration' : ''));
 console.log('  engine  — flow cases + ' + options.games + ' fuzzed games');
+console.log('  ai      — tiers, the crib sign, and the no-cheating audit');
 console.log('');
 
 var suites = [];
@@ -137,6 +154,16 @@ suites.push({
   result: engine,
   elapsed: (Date.now() - engineStarted) / 1000
 });
+
+console.log('');
+console.log('  [ai]');
+var aiStarted = Date.now();
+var ai = globalThis.Cribbage.AITests.run({
+  games: options.aiGames,
+  verbose: options.verbose,
+  log: log
+});
+suites.push({ name: 'ai', result: ai, elapsed: (Date.now() - aiStarted) / 1000 });
 
 // The animation queue is asynchronous, so unlike the other two this suite hands
 // back a promise. Everything downstream of it therefore has to wait.

@@ -621,8 +621,15 @@ body {
    player acting, and they should not look like the same object.
    =========================================================================== */
 
+/* Wrapping at every width, not only on a phone. The row is at its narrowest in
+   the 640–1024px band — the notes column has gone, so the row is the viewport
+   rather than the capped lane — and there the lay-away button, the hint and the
+   always-available cluster genuinely do not fit on one line. Wrapping puts the
+   cluster on a second line intact; the alternative, letting flex shrink them,
+   folds button labels onto two lines and clips the hint to an ellipsis. */
 .controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-3);
   min-height: 36px;
@@ -634,6 +641,18 @@ body {
   align-items: center;
   gap: var(--sp-2);
   margin-left: auto;
+}
+
+/* Nothing in this row shrinks. Flex shrinks in proportion to base size, so left
+   to itself the widest item goes first — and the widest item here is the one
+   carrying an instruction ("Lay away 2 to their crib"), which at 660px folded
+   onto two lines. Wrapping is the give instead, and it is a cleaner one. */
+.controls > * {
+  flex: 0 0 auto;
+}
+
+.controls__confirm {
+  white-space: nowrap;
 }
 
 .controls__hint {
@@ -666,6 +685,87 @@ body {
 .controls__skip[data-active='true'] {
   color: var(--glow);
   box-shadow: inset 0 0 0 1px var(--glow-soft), var(--shadow-card);
+}
+
+/* ===========================================================================
+   6c. The difficulty control
+   ---------------------------------------------------------------------------
+   Three segments and one line of prose, sitting in the controls row between
+   the lay-away hint and Skip/New game.
+
+   The segments share edges so the group reads as ONE switch with three faces
+   rather than as three separate buttons — a player picks a difficulty, they do
+   not press Easy. The selected face takes the brass fill the primary .btn
+   already uses, because "this is the live one" is a thing the design has
+   already said once and should not say a second way.
+   =========================================================================== */
+
+.difficulty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.difficulty__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.difficulty__label {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-felt-soft);
+}
+
+/* The hairline between segments is the group's own inset ring showing through
+   a 1px gap, so there is no border to double up at the ends. */
+.difficulty__opts {
+  display: flex;
+  gap: 1px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--felt-edge), var(--shadow-card);
+}
+
+/* Specificity note: .btn's own rules live in section 10, LATER in this file,
+   so a bare .difficulty__opt would lose every property they both set. The
+   .controls prefix is what wins it back — the same trick section 6b already
+   uses for .controls .btn:disabled. */
+.controls .difficulty__opt {
+  min-height: 30px;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: 0;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.controls .difficulty__opt[aria-pressed='true'] {
+  color: var(--wood-edge);
+  background-image: linear-gradient(180deg, var(--brass-light), var(--brass));
+  box-shadow: inset 0 0 0 1px var(--brass-deep);
+}
+
+/* Wide enough for the longest of the three lines at --text-xs, so switching
+   tiers rewrites the sentence without moving the row it sits under. */
+.difficulty__note {
+  min-height: calc(var(--text-xs) * 1.4);
+  max-width: 30ch;
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--on-felt-soft);
+}
+
+/* A queued change is the one thing here the player has to notice, so it takes
+   the same warm accent every other "pay attention to this" carries. */
+.difficulty__note[data-pending='true'] {
+  color: var(--glow);
 }
 
 .btn__key {
@@ -1271,6 +1371,15 @@ body {
     transform-origin: 50% var(--cb-peg-anchor, 69.15%);
     transform: rotate(90deg);
   }
+
+  /* This is the narrowest the controls row ever gets: the notes column has
+     gone, so the row is the viewport rather than the capped lane, and at 640px
+     the four items add up to more than it. The word OPPONENT is the cheapest
+     seventy pixels in the row — the three tier names are self-evident, and the
+     group keeps its aria-label, so nothing is lost but ink. */
+  .difficulty__label {
+    display: none;
+  }
 }
 
 /* --- < 640px: phone ------------------------------------------------------- */
@@ -1351,7 +1460,6 @@ body {
      row stays where it belongs and the page scrolls, which is what every other
      phone layout does. */
   .controls {
-    flex-wrap: wrap;
     gap: var(--sp-2);
   }
 
@@ -1359,8 +1467,43 @@ body {
     min-height: 44px;
   }
 
-  .controls__confirm {
+  /* Beats the blanket no-shrink in section 6b: on a phone the lay-away button
+     takes the whole width rather than sharing a line with anything. */
+  .controls > .controls__confirm {
     flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  /* Same reason, one line down: the always-available cluster gets the next
+     line to itself and spreads across it, so nothing is a 30px target. */
+  .controls > .controls__right {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  /* The three tiers and the two buttons come to about 380px of label and
+     padding, which does not fit a 375px phone on one line — squeezed onto one
+     it clipped "Hard" and folded "New game" in half. So the switch takes a line
+     of its own and spreads across it: three equal thumb-sized segments, which
+     is the right shape for this control on a phone anyway. */
+  .controls__right > .difficulty {
+    flex: 1 1 100%;
+  }
+
+  .difficulty__opts {
+    flex: 1 1 auto;
+  }
+
+  .controls .difficulty__opt {
+    flex: 1 1 0;
+    justify-content: center;
+    padding: var(--sp-1) var(--sp-2);
+  }
+
+  .controls__right > .btn {
+    flex: 1 1 auto;
     justify-content: center;
   }
 

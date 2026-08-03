@@ -48,8 +48,16 @@
 <script src="js/scoring.js"></script>
 <script src="js/scoring-naive.js"></script>
 <script src="js/engine.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/render-cards.js"></script>
+<script src="js/render-board.js"></script>
+<script src="js/render.js"></script>
+<script src="js/animate.js"></script>
+<script src="js/game.js"></script>
 <script src="js/tests.js"></script>
 <script src="js/engine-tests.js"></script>
+<script src="js/ai-tests.js"></script>
+<script src="js/animate-tests.js"></script>
 <script>
   (function () {
     'use strict';
@@ -59,6 +67,7 @@
     var FUZZ_GAMES = 2000;
 
     document.getElementById('counts').textContent =
+      'Four suites: scoring, engine, ai, animate. ' +
       Cribbage.Tests.showCaseCount + ' show cases, ' +
       Cribbage.Tests.playCaseCount + ' play sequences, ' +
       FUZZ_GAMES.toLocaleString() + ' fuzzed games.';
@@ -75,29 +84,41 @@
         var lines = [];
         var started = Date.now();
         var res;
-        try {
-          lines.push('  [scoring]');
-          var scoring = Cribbage.Tests.run({
-            exhaustive: exhaustive,
-            log: function (s) { lines.push(s); }
+        function log(s) { lines.push(s); }
+
+        // AnimateTests.run is async — an animation queue cannot be drained
+        // synchronously — so the whole chain is a promise even though the other
+        // three suites return their results outright.
+        Promise.resolve()
+          .then(function () {
+            lines.push('  [scoring]');
+            var scoring = Cribbage.Tests.run({ exhaustive: exhaustive, log: log });
+            lines.push('');
+            lines.push('  [engine]');
+            var engine = Cribbage.EngineTests.run({ games: FUZZ_GAMES, log: log });
+            lines.push('');
+            lines.push('  [ai]');
+            var ai = Cribbage.AITests.run({ log: log });
+            lines.push('');
+            lines.push('  [animate]');
+            return Promise.resolve(Cribbage.AnimateTests.run({ log: log }))
+              .then(function (animate) { return [scoring, engine, ai, animate]; });
+          })
+          .then(function (suites) {
+            res = {
+              passed: suites.reduce(function (n, s) { return n + s.passed; }, 0),
+              failed: suites.reduce(function (n, s) { return n + s.failed; }, 0),
+              results: suites.reduce(function (a, s) { return a.concat(s.results); }, [])
+            };
+            finish();
+          })
+          .catch(function (err) {
+            summary.innerHTML = '<span class="fail">The suite threw before finishing.</span>';
+            out.textContent = (err && err.stack) || String(err);
+            buttons.forEach(function (b) { b.disabled = false; });
           });
-          lines.push('');
-          lines.push('  [engine]');
-          var engine = Cribbage.EngineTests.run({
-            games: FUZZ_GAMES,
-            log: function (s) { lines.push(s); }
-          });
-          res = {
-            passed: scoring.passed + engine.passed,
-            failed: scoring.failed + engine.failed,
-            results: scoring.results.concat(engine.results)
-          };
-        } catch (err) {
-          summary.innerHTML = '<span class="fail">The suite threw before finishing.</span>';
-          out.textContent = (err && err.stack) || String(err);
-          buttons.forEach(function (b) { b.disabled = false; });
-          return;
-        }
+
+        function finish() {
         var secs = ((Date.now() - started) / 1000).toFixed(2);
 
         var failures = res.results.filter(function (r) { return !r.ok; });
@@ -122,6 +143,7 @@
           ('Every assertion passed. Run the exhaustive verification for the full ' +
            'enumeration and the score histogram.');
         buttons.forEach(function (b) { b.disabled = false; });
+        }
       }, 50);
     }
 

@@ -55,6 +55,12 @@
     return Promise.resolve();
   }
 
+  // Sub-millisecond where it exists, because the thing being timed is a few
+  // milliseconds long and Date.now() would quantise most of it to zero.
+  var clock = (typeof root.performance !== 'undefined' && isFn(root.performance.now))
+    ? function () { return root.performance.now(); }
+    : function () { return Date.now(); };
+
   // Only one summary element exists per session, but its heading needs an id for
   // aria-labelledby and two sessions can briefly overlap during a newGame().
   var summarySeq = 0;
@@ -189,105 +195,60 @@
   // =========================================================================
   // The opponent seam.
   //
-  // Phase 5 replaces the OBJECT below and nothing else moves. The contract is
-  // exactly two methods, both synchronous, both handed frozen engine data:
+  // js/ai.js owns how WELL the opponent plays. This file owns only when it is
+  // asked and which tier is asked, and the contract between them is exactly two
+  // methods, both synchronous, both handed frozen engine data:
   //
   //   chooseDiscard(hand, isOwnCrib, state) -> [cardA, cardB]
   //   choosePlay(legalCards, state)         -> one of legalCards
   //
   // `hand` and `legalCards` are the engine's own frozen card objects, so an
-  // implementation can return them straight back. `state` is a getState()
-  // snapshot — note that it carries `deck`, which an honest opponent must not
-  // read. The controller validates whatever comes back and falls back to a
-  // legal move rather than trusting it, so a broken tier cannot wedge the game.
-  //
-  // What is below is a PLACEHOLDER. It is deliberately shallow — no starter
-  // enumeration, no crib EV, no lookahead — and exists only so the game is
-  // playable end to end this phase.
+  // implementation returns them straight back. `state` is a full getState()
+  // snapshot — it carries `deck` and `crib`, which an honest opponent must not
+  // read, and ai.js narrows it to one seat's view before anything strategic
+  // touches it. Nothing here depends on that being true: whatever comes back is
+  // checked against the engine's own list of legal actions before it is
+  // applied, so a tier can be WRONG without being able to wedge the game.
   // =========================================================================
 
-  // How much a two-card lay-away is worth sitting IN a crib, before we decide
-  // whose crib it is. Weights are eyeballed, not derived; the real numbers are
-  // Phase 5's job.
-  function layAwayValue(a, b) {
-    var v = 0;
-    if (a.rank === 5 || b.rank === 5) v += 2.5;
-    if (a.rank === b.rank) v += 2;
-    if (a.value + b.value === 15) v += 2;
-    var gap = Math.abs(a.rank - b.rank);
-    if (gap === 1) v += 1.2;
-    else if (gap === 2) v += 0.6;
-    if (a.suit === b.suit) v += 0.4;
-    return v;
-  }
+  // The three tiers, in the order the control shows them.
+  //
+  // `note` is the line under the control and `about` the accessible name, and
+  // both are written to promise only what the measurements in js/ai.js actually
+  // support: easy really does hand over about two points of hand value every
+  // deal, and hard really does take about three games in five off normal over
+  // four thousand of them. A difficulty label that oversells is a label the
+  // player stops believing after two hands, and then the whole control is
+  // decoration.
+  var TIERS = [
+    {
+      level: 'easy',
+      label: 'Easy',
+      note: 'Casual. Gives points away.',
+      about: 'Easy — plays casually and gives away points you will spot.'
+    },
+    {
+      level: 'normal',
+      label: 'Normal',
+      note: 'A solid club player.',
+      about: 'Normal — a solid club player. Keeps a good hand and pegs sensibly.'
+    },
+    {
+      level: 'hard',
+      label: 'Hard',
+      note: 'Beats Normal 3 games in 5.',
+      about: 'Hard — weighs the odds over thousands of imagined deals. ' +
+        'Wins about three games in five against Normal.'
+    }
+  ];
 
-  function createPlaceholderOpponent() {
-    return {
-      name: 'placeholder',
+  var DEFAULT_TIER = 'normal';
 
-      chooseDiscard: function (hand, isOwnCrib) {
-        var pairs = [];
-        var i;
-        var j;
-        for (i = 0; i < hand.length; i++) {
-          for (j = i + 1; j < hand.length; j++) pairs.push([hand[i], hand[j]]);
-        }
-
-        // A hard rule, not a weighting: a five in the opponent's crib is the
-        // single worst lay-away in the game, and no heuristic score should ever
-        // be allowed to outvote it. Four fives is the most anyone can hold, so
-        // there is always at least one five-free pair to fall back to.
-        if (!isOwnCrib) {
-          var safe = pairs.filter(function (p) {
-            return p[0].rank !== 5 && p[1].rank !== 5;
-          });
-          if (safe.length) pairs = safe;
-        }
-
-        var best = pairs[0];
-        var bestScore = -Infinity;
-        for (i = 0; i < pairs.length; i++) {
-          var pair = pairs[i];
-          var kept = hand.filter(function (c) {
-            return c.id !== pair[0].id && c.id !== pair[1].id;
-          });
-          // No starter: a floor on the kept hand rather than its expectation.
-          var score = Scoring.scoreHand(kept, null, false).total;
-          score += (isOwnCrib ? 1 : -1) * layAwayValue(pair[0], pair[1]);
-          if (score > bestScore) {
-            bestScore = score;
-            best = pair;
-          }
-        }
-        return best;
-      },
-
-      choosePlay: function (legal, state) {
-        var series = state.play.series;
-        var count = state.play.count;
-        var best = legal[0];
-        var bestScore = -Infinity;
-        for (var i = 0; i < legal.length; i++) {
-          var card = legal[i];
-          var points = Scoring.scorePlay(series, card).points;
-          var after = count + card.value;
-          var score = points * 10;
-          if (after === 31) score += 6;
-          // Sixteen of fifty-two cards are worth ten, so leaving the count at 5
-          // or 21 hands over a fifteen or a thirty-one far too often.
-          if (after === 5 || after === 21) score -= 4;
-          if (count === 0 && card.rank === 5) score -= 5;
-          // All else equal, get the big cards out early and keep the low ones
-          // for the awkward end of a series.
-          score -= card.value * 0.1;
-          if (score > bestScore) {
-            bestScore = score;
-            best = card;
-          }
-        }
-        return best;
-      }
-    };
+  function tierFor(level) {
+    for (var i = 0; i < TIERS.length; i++) {
+      if (TIERS[i].level === level) return TIERS[i];
+    }
+    return null;
   }
 
   // =========================================================================
@@ -300,7 +261,12 @@
    *   opts.me           which seat the human takes. 0 (default) or 1.
    *   opts.labels       ['You', 'Opponent'] indexed by player number.
    *   opts.targetScore  121 (default) or 61.
-   *   opts.opponent     the AI seam. Defaults to the placeholder above.
+   *   opts.difficulty   'easy' | 'normal' (default) | 'hard'.
+   *   opts.opponent     an explicit object for the seam, for a harness that
+   *                     wants to drive a fake one. Normally omitted: the
+   *                     difficulty above builds a real Cribbage.AI tier.
+   *   opts.aiSeed       seeds the opponent's rng, so ?seed=N reproduces the
+   *                     WHOLE game and not merely the shuffle.
    *   opts.thinkMs      the opponent's artificial pause. Default 550.
    *   opts.speed        an explicit --anim-scale. OMITTED BY DEFAULT, so the
    *                     prefers-reduced-motion floor in theme.css holds unless
@@ -322,9 +288,10 @@
     // The summary lays five real cards out as its receipts, so this file needs
     // the card builder as well as the three layers it already drove.
     var RC = root.Cribbage && root.Cribbage.RenderCards;
-    if (!Engine || !Render || !Animate || !RC) {
-      throw new Error('Cribbage.Game: engine.js, render-cards.js, render.js and ' +
-        'animate.js must load first');
+    var AI = root.Cribbage && root.Cribbage.AI;
+    if (!Engine || !Render || !Animate || !RC || !AI) {
+      throw new Error('Cribbage.Game: engine.js, render-cards.js, render.js, ' +
+        'animate.js and ai.js must load first');
     }
     if (!rootEl) throw new Error('Cribbage.Game.create: no root element');
 
@@ -334,8 +301,29 @@
     var them = 1 - me;
     var labels = opts.labels || (me === 0 ? ['You', 'Opponent'] : ['Opponent', 'You']);
     var targetScore = opts.targetScore === 61 ? 61 : 121;
-    var opponent = opts.opponent || createPlaceholderOpponent();
     var thinkMs = typeof opts.thinkMs === 'number' ? opts.thinkMs : THINK_MS;
+
+    // ---------------------------------------------------------- the opponent ---
+
+    // An injected opponent names its own tier if it has one, so the control
+    // starts out telling the truth about whatever is actually in the seat.
+    var level = (tierFor(opts.difficulty) ||
+      (opts.opponent && tierFor(opts.opponent.level)) ||
+      tierFor(DEFAULT_TIER)).level;
+    // A tier chosen mid-hand and not yet in the seat. See chooseDifficulty().
+    var pendingLevel = null;
+
+    function makeOpponent(lvl) {
+      var aiOpts = {};
+      // Left undefined otherwise: ai.js then seeds itself off the clock, which
+      // is what an ordinary game wants.
+      if (typeof opts.aiSeed === 'number' && isFinite(opts.aiSeed)) {
+        aiOpts.seed = opts.aiSeed;
+      }
+      return AI.create(lvl, aiOpts);
+    }
+
+    var opponent = opts.opponent || makeOpponent(level);
     // null means "cut for deal". Held locally rather than read back off opts,
     // because newGame() may change it and the caller's object is theirs.
     var dealer = opts.dealer === 0 || opts.dealer === 1 ? opts.dealer : null;
@@ -472,6 +460,81 @@
       return snapshot.dealer === me ? 'your crib' : 'their crib';
     }
 
+    // ----------------------------------------------------------- difficulty ---
+    //
+    // A TIER CHANGE TAKES EFFECT FROM THE NEXT DEAL, and the control says so on
+    // its face rather than leaving the player to wonder.
+    //
+    // Swapping the opponent mid-hand would be simpler to write and worse to
+    // play against. It has already seen this hand's cards, chosen a lay-away
+    // and remembered which two cards it put in the crib; a replacement arrives
+    // with none of that and finishes the hand playing blind, so the tier the
+    // player just picked would be misrepresented by the very hand they picked
+    // it for. Worse, the change would land in the middle of a count and the
+    // player would have no way to tell which opponent scored what.
+    //
+    // Waiting for the deal costs at most one hand and makes the whole thing
+    // legible: one hand, one opponent, and a line under the buttons naming when
+    // the new one arrives.
+
+    function setLevel(next) {
+      level = next;
+      opponent = makeOpponent(next);
+    }
+
+    /**
+     * chooseDifficulty(next) -> the tier the control now shows
+     *
+     * Applied immediately only when there is no hand to protect: before the
+     * first deal, and once the game is over. Otherwise it is queued.
+     */
+    function chooseDifficulty(next) {
+      var tier = tierFor(next);
+      if (!tier) return pendingLevel || level;
+
+      if (tier.level === level) {
+        // Changing your mind back before the hand turns over. Nothing to queue,
+        // and the note has to stop claiming a change is coming.
+        if (pendingLevel) {
+          pendingLevel = null;
+          announce('Opponent stays on ' + tier.label + '.');
+          if (session) repaint();
+        }
+        return level;
+      }
+      if (pendingLevel === tier.level) return tier.level;
+
+      var snapshot = session ? state() : null;
+      var live = !snapshot || snapshot.phase === 'GAME_OVER' || snapshot.handNumber === 0;
+      if (live) {
+        pendingLevel = null;
+        setLevel(tier.level);
+        announce('Opponent set to ' + tier.label + '. ' + tier.note);
+      } else {
+        pendingLevel = tier.level;
+        announce('Opponent set to ' + tier.label + ', from the next hand.');
+      }
+      if (session) repaint();
+      return pendingLevel || level;
+    }
+
+    // "From the next hand" is measured against the ENGINE, not the animation:
+    // the swap happens when the deal event arrives, which is before the
+    // opponent is asked for anything in that hand and regardless of whether the
+    // deal is being animated or fast-forwarded past.
+    function applyPendingLevel(events) {
+      if (!pendingLevel) return;
+      for (var i = 0; i < events.length; i++) {
+        if (events[i] && events[i].type === 'deal') {
+          var next = pendingLevel;
+          pendingLevel = null;
+          setLevel(next);
+          announce('Opponent is now ' + tierFor(next).label + '.');
+          return;
+        }
+      }
+    }
+
     // ---------------------------------------------------------------- hints ---
 
     // The one thing an engine snapshot cannot say is which of the human's cards
@@ -548,6 +611,11 @@
 
       var hint = el(doc, 'span', 'controls__hint', '');
 
+      // The right-hand cluster is everything that is ALWAYS available: pick an
+      // opponent, hurry the animation, start again. The left of the row is the
+      // one thing the game is asking for right now, and often nothing at all.
+      var difficulty = buildDifficulty();
+
       var right = el(doc, 'div', 'controls__right');
 
       var skip = el(doc, 'button', 'btn btn--quiet controls__skip', '');
@@ -562,6 +630,7 @@
       fresh.type = 'button';
       fresh.addEventListener('click', function () { newGame(); });
 
+      right.appendChild(difficulty.box);
       right.appendChild(skip);
       right.appendChild(fresh);
 
@@ -570,11 +639,73 @@
       bar.appendChild(right);
       view.el.game.appendChild(bar);
 
-      return { bar: bar, confirm: confirm, hint: hint, skip: skip, fresh: fresh };
+      return {
+        bar: bar, confirm: confirm, hint: hint,
+        difficulty: difficulty, skip: skip, fresh: fresh
+      };
+    }
+
+    // Three toggles in a group rather than role="radio": a radiogroup owes the
+    // player a roving tabindex and arrow-key selection, and ArrowLeft/Right are
+    // already the hand cursor everywhere on this screen. aria-pressed on three
+    // ordinary buttons is honest about what they are, keeps Tab and Space doing
+    // what they look like they do, and collides with nothing.
+    function buildDifficulty() {
+      var box = el(doc, 'div', 'difficulty');
+
+      var row = el(doc, 'div', 'difficulty__row');
+      row.setAttribute('role', 'group');
+      row.setAttribute('aria-label', 'Opponent difficulty');
+      row.appendChild(el(doc, 'span', 'difficulty__label', 'Opponent'));
+
+      var group = el(doc, 'div', 'difficulty__opts');
+      var buttons = [];
+      for (var i = 0; i < TIERS.length; i++) {
+        buttons.push(buildTier(TIERS[i], group));
+      }
+      row.appendChild(group);
+
+      // Never empty: it carries the selected tier's one line when nothing is
+      // queued, so the row does not change height as the note comes and goes.
+      var note = el(doc, 'p', 'difficulty__note', '');
+
+      box.appendChild(row);
+      box.appendChild(note);
+      return { box: box, buttons: buttons, note: note };
+    }
+
+    function buildTier(tier, group) {
+      var button = el(doc, 'button', 'btn btn--quiet difficulty__opt', tier.label);
+      button.type = 'button';
+      button.setAttribute('data-level', tier.level);
+      // The accessible name is the whole honest sentence, and it STARTS with
+      // the visible word, so voice control can still say "click Hard".
+      button.setAttribute('aria-label', tier.about);
+      button.title = tier.about;
+      button.addEventListener('click', function () { chooseDifficulty(tier.level); });
+      group.appendChild(button);
+      return button;
+    }
+
+    function updateDifficulty() {
+      var ui = controls.difficulty;
+      // The SELECTED tier lights up, not the one currently in the seat: the
+      // player pressed it, and the note underneath is what explains the gap.
+      var shown = pendingLevel || level;
+      for (var i = 0; i < ui.buttons.length; i++) {
+        var button = ui.buttons[i];
+        button.setAttribute('aria-pressed',
+          button.getAttribute('data-level') === shown ? 'true' : 'false');
+      }
+      ui.note.textContent = pendingLevel
+        ? tierFor(pendingLevel).label + ' from the next hand.'
+        : tierFor(level).note;
+      ui.note.setAttribute('data-pending', pendingLevel ? 'true' : 'false');
     }
 
     function updateControls(snapshot) {
       if (!controls) return;
+      updateDifficulty();
       var discarding = awaiting && snapshot.phase === 'DISCARD';
       controls.confirm.hidden = !discarding;
       controls.confirm.disabled = selection.length !== 2;
@@ -999,6 +1130,7 @@
     function runEvents(events) {
       var token = generation;
       awaiting = false;
+      applyPendingLevel(events);
       // Read off the events BEFORE a single beat plays. The receipts are the
       // events themselves, so reading them here rather than off the beats keeps
       // the summary honest even if a beat throws or is fast-forwarded away.
@@ -1086,14 +1218,17 @@
 
         stop();
         var pause = think(thinkMs * speed);
-        // think() registers itself synchronously, so this paints the pause as a
-        // wait the Skip control can act on.
+        // think() registers itself synchronously, so this both paints the pause
+        // as a wait the Skip control can act on and tells us whether there is a
+        // pause to hide the opponent's thinking inside.
+        var hidden = !!thinking;
         updateControls(state());
-        pause.then(function () {
-          if (token !== generation || !session) return;
+        Promise.all([pause, chooseAction(token, hidden)]).then(function (both) {
+          var action = both[1];
+          if (token !== generation || !session || !action) return;
           var events;
           try {
-            events = session.game.apply(opponentAction());
+            events = session.game.apply(action);
           } catch (err) {
             reportError('the opponent produced an illegal move', err);
             return;
@@ -1106,10 +1241,59 @@
       }
     }
 
-    // Whatever the seam hands back is checked against the engine's own list of
-    // legal actions before it is applied. Phase 5's tiers get to be wrong
-    // without being able to wedge the game.
+    /**
+     * chooseAction(token, hidden) -> Promise<action | null>
+     *
+     * The opponent's decision, arranged so it can never land in the middle of
+     * something moving.
+     *
+     * It is real synchronous work — hard searches a couple of thousand imagined
+     * cribs for a lay-away — and the point of measuring it is that it is not
+     * zero. Two things keep it off the animation's critical path.
+     *
+     * First, WHERE it runs. The pump only reaches this branch after the
+     * previous drain resolved, so the table is idle: there is no animation in
+     * flight to stutter, and the one that follows has not been queued yet.
+     *
+     * Second, WHEN. It starts at the TOP of the think pause rather than at the
+     * bottom, on a fresh task so the "thinking" state has painted first, and is
+     * joined with the pause below — so the search spends time that was going to
+     * be spent waiting, and the pause the player sees is the pause they were
+     * always going to get rather than that plus a search.
+     *
+     * With the pause cut — Skip, or --anim-scale 0 — there is nothing to hide
+     * inside and nothing on screen to stutter, so it runs straight away rather
+     * than spending a timer hop on each of the sixty-odd decisions in a game.
+     */
+    function chooseAction(token, hidden) {
+      if (!hidden) return Promise.resolve(opponentAction());
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          resolve(token === generation && session ? opponentAction() : null);
+        }, 0);
+      });
+    }
+
+    // What the opponent's decisions actually cost. Nothing in the game reads
+    // it; it is here so that "does hard stutter?" can be answered with a number
+    // rather than with a shrug — see decisionStats() in the api below.
+    var decisions = { count: 0, totalMs: 0, worstMs: 0, lastMs: 0 };
+
     function opponentAction() {
+      var at = clock();
+      var action = decideAction();
+      var took = clock() - at;
+      decisions.count++;
+      decisions.totalMs += took;
+      decisions.lastMs = took;
+      if (took > decisions.worstMs) decisions.worstMs = took;
+      return action;
+    }
+
+    // Whatever the seam hands back is checked against the engine's own list of
+    // legal actions before it is applied. A tier gets to be wrong without being
+    // able to wedge the game.
+    function decideAction() {
       var game = session.game;
       var legal = game.legalActions();
       var snapshot = game.getState();
@@ -1432,10 +1616,19 @@
      */
     function newGame(overrides) {
       generation++;
+      // A new game starts against the tier the control is SHOWING, not the one
+      // the last hand happened to be played against. "From the next hand" is
+      // satisfied here too — there is no next hand of the old game.
+      if (pendingLevel) {
+        setLevel(pendingLevel);
+        pendingLevel = null;
+      }
       if (overrides) {
         if (overrides.targetScore === 61 || overrides.targetScore === 121) {
           targetScore = overrides.targetScore;
         }
+        if (tierFor(overrides.difficulty)) setLevel(overrides.difficulty);
+        // Last, so an explicitly injected opponent still wins over a tier name.
         if (overrides.opponent) opponent = overrides.opponent;
         if (overrides.dealer === 0 || overrides.dealer === 1 || overrides.dealer === null) {
           dealer = overrides.dealer;
@@ -1461,6 +1654,31 @@
       skip: skipAnimation,
       setSpeed: setSpeed,
       destroy: destroy,
+
+      /**
+       * setDifficulty(level) -> the tier the control now shows
+       *
+       * 'easy' | 'normal' | 'hard'. Anything else is ignored rather than
+       * thrown: this is wired to a button, and a typo should not end the game.
+       * The change lands at the next deal — difficulty() keeps returning the
+       * tier the hand in progress is being played against until it does.
+       */
+      setDifficulty: function (next) { return chooseDifficulty(next); },
+      /** The tier in the seat right now. */
+      difficulty: function () { return level; },
+      /** The tier queued for the next deal, or null. */
+      pendingDifficulty: function () { return pendingLevel; },
+      /** The tier the control is showing: the queued one if there is one. */
+      selectedDifficulty: function () { return pendingLevel || level; },
+      /** What the opponent's thinking has cost, in ms. For the console and QA. */
+      decisionStats: function () {
+        return {
+          count: decisions.count,
+          lastMs: decisions.lastMs,
+          worstMs: decisions.worstMs,
+          meanMs: decisions.count ? decisions.totalMs / decisions.count : 0
+        };
+      },
 
       /**
        * setPauseAfterCount(on) -> boolean
@@ -1519,7 +1737,10 @@
   root.Cribbage = root.Cribbage || {};
   root.Cribbage.Game = {
     create: create,
-    createPlaceholderOpponent: createPlaceholderOpponent,
+    // The tier names and the sentences that describe them, so Phase 6's
+    // settings screen can show the same three words this control does rather
+    // than inventing a second set.
+    TIERS: TIERS,
     // Exported for js/animate-tests.js. Both are pure, and between them they are
     // the whole of the summary's correctness: readCounts is what it says, and
     // summaryKey is what it takes to dismiss it. Neither needs a DOM.

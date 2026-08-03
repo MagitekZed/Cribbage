@@ -34,6 +34,7 @@
        cards.js      values, no dependencies
        scoring.js    needs cards.js
        engine.js     needs cards.js + scoring.js
+       ai.js         needs cards.js + scoring.js. No DOM, no engine internals
        render-*.js   DOM builders, no dependency on the engine
        render.js     needs render-cards.js + render-board.js
        animate.js    needs render-cards.js; drives a mounted render.js view
@@ -41,6 +42,7 @@
 <script src="js/cards.js"></script>
 <script src="js/scoring.js"></script>
 <script src="js/engine.js"></script>
+<script src="js/ai.js"></script>
 <script src="js/render-cards.js"></script>
 <script src="js/render-board.js"></script>
 <script src="js/render.js"></script>
@@ -60,7 +62,10 @@
   //                 prefers-reduced-motion floor decides. 0 is instant.
   //   ?target=61    a short game.
   //   ?dealer=0|1   skip the cut for deal.
-  //   ?seed=N       a deterministic shuffle, for reproducing a bug report.
+  //   ?seed=N       a deterministic shuffle AND a deterministic opponent, so a
+  //                 bug report reproduces the whole game rather than the cards.
+  //   ?difficulty=  easy | normal | hard. The in-game control changes it too;
+  //                 this is only the tier the first hand starts against.
   //   ?pause=0      do not stop on the count summary. Phase 6 turns this into a
   //                 real setting; until then it is how a whole game is driven
   //                 end to end without a click after every count.
@@ -84,7 +89,15 @@
   if (dealer === '0' || dealer === '1') opts.dealer = Number(dealer);
 
   var seed = parseInt(params.get('seed'), 10);
-  if (isFinite(seed)) opts.rng = mulberry32(seed);
+  if (isFinite(seed)) {
+    opts.rng = mulberry32(seed);
+    // The opponent has an rng of its own — hard samples thousands of imagined
+    // cribs with it — so a seeded shuffle alone would still replay differently.
+    opts.aiSeed = seed;
+  }
+
+  var difficulty = params.get('difficulty');
+  if (difficulty) opts.difficulty = difficulty;
 
   if (params.get('pause') === '0') opts.pauseAfterCount = false;
 
